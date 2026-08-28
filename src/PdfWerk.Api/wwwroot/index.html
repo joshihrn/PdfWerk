@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PdfWerk — PDF tools and API</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a2e;
+    --panel-2: #1a2340;
+    --line: #27314f;
+    --ink: #e8ecf7;
+    --muted: #97a2c0;
+    --accent: #6ea8fe;
+    --accent-2: #38d39f;
+    --danger: #ff6b6b;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 20% -10%, #1b2547 0%, var(--bg) 55%);
+    color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+  header.hero { padding: 28px 0 34px; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; letter-spacing: .2px; }
+  .brand .dot { width: 12px; height: 12px; border-radius: 3px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.12; margin: 22px 0 12px; letter-spacing: -.5px; }
+  h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 62ch; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+  .btn {
+    appearance: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+    padding: 10px 16px; border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, #2d6cdf, #1f9d76); border-color: transparent; }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+  h2 { font-size: 20px; margin: 40px 0 14px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card code { color: var(--accent); font-size: 12.5px; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #23305a; color: var(--accent); margin-left: 6px; }
+
+  .tool { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; }
+  .tool h3 { margin: 0 0 4px; font-size: 16px; }
+  .tool .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 5px; }
+  textarea, input[type=text], select, input[type=file] {
+    width: 100%; background: #0e1428; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font: inherit;
+  }
+  textarea { min-height: 130px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 160px; }
+  .out { margin-top: 12px; font-size: 13px; color: var(--muted); min-height: 20px; }
+  .out .ok { color: var(--accent-2); }
+  .out .err { color: var(--danger); }
+  .quota { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  iframe.preview { width: 100%; height: 460px; border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; background: #fff; }
+  footer { margin-top: 50px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 18px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="brand"><span class="dot"></span> PdfWerk</div>
+    <h1>Everything you need to do to a PDF,<br><span>as a UI and as an API.</span></h1>
+    <p class="lede">
+      Create PDFs from text or Word, edit the text inside them, design and fill form fields,
+      merge documents and summarise them. Use the tools below, call the same endpoints directly,
+      or drop the widget into your own app. Open source, MIT licensed.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="/docs">API reference</a>
+      <a class="btn" href="/v1/actions">Action catalogue</a>
+      <a class="btn" href="https://github.com/joshihrn/PdfWerk">GitHub</a>
+    </div>
+  </header>
+
+  <h2>What it does</h2>
+  <div class="grid" id="actions"></div>
+
+  <h2>Try it</h2>
+
+  <div class="tool">
+    <h3>Create a PDF from text or Markdown</h3>
+    <p class="hint">Headings, lists, tables, code blocks and links are all rendered.</p>
+    <textarea id="md"># Service Agreement
+
+This agreement is made between **Acme Corporation** and the client.
+
+## Terms
+
+1. Payment is due within 30 days.
+2. Either party may terminate with 60 days notice.
+
+| Item | Amount |
+| --- | ---: |
+| Setup | 1,200 |
+| Monthly | 350 |
+
+> Signed on behalf of both parties.
+</textarea>
+    <div class="row">
+      <div><label>Title</label><input type="text" id="title" value="Service Agreement"></div>
+      <div><label>Format</label><select id="fmt"><option>Markdown</option><option>Plain</option></select></div>
+      <div><label>Page</label><select id="page"><option>A4</option><option>Letter</option><option>Legal</option></select></div>
+    </div>
+    <div class="cta">
+      <button class="btn primary" onclick="createPdf('stream')">Preview</button>
+      <button class="btn" onclick="createPdf('download')">Download</button>
+    </div>
+    <div class="out" id="createOut"></div>
+    <iframe class="preview" id="createPreview" style="display:none"></iframe>
+  </div>
+
+  <div class="tool">
+    <h3>Inspect a PDF</h3>
+    <p class="hint">Page count, metadata, page sizes and every form field it contains.</p>
+    <input type="file" id="inspectFile" accept="application/pdf">
+    <div class="cta"><button class="btn primary" onclick="inspect()">Inspect</button></div>
+    <div class="out" id="inspectOut"></div>
+  </div>
+
+  <div class="tool">
+    <h3>Merge PDFs</h3>
+    <p class="hint">Select two or more files; they are combined in the order chosen.</p>
+    <input type="file" id="mergeFiles" accept="application/pdf" multiple>
+    <div class="cta">
+      <button class="btn primary" onclick="merge('stream')">Preview</button>
+      <button class="btn" onclick="merge('download')">Download</button>
+    </div>
+    <div class="out" id="mergeOut"></div>
+    <iframe class="preview" id="mergePreview" style="display:none"></iframe>
+  </div>
+
+  <div class="tool">
+    <h3>Word to PDF</h3>
+    <p class="hint">Uses LibreOffice when available, otherwise the built-in .docx renderer.</p>
+    <input type="file" id="wordFile" accept=".docx,.doc">
+    <div class="cta">
+      <button class="btn primary" onclick="word('stream')">Preview</button>
+      <button class="btn" onclick="word('download')">Download</button>
+    </div>
+    <div class="out" id="wordOut"></div>
+    <iframe class="preview" id="wordPreview" style="display:none"></iframe>
+  </div>
+
+  <h2>Your quota</h2>
+  <div class="tool">
+    <p class="hint">Limits apply per action and are enforced on every call. Nothing is consumed by checking.</p>
+    <div class="cta"><button class="btn" onclick="quota()">Refresh</button></div>
+    <pre class="quota" id="quotaOut">—</pre>
+  </div>
+
+  <footer>
+    PdfWerk · MIT licensed · <a href="/docs">API reference</a> · <a href="/health">health</a>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function say(el, msg, cls) { $(el).innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+
+function quotaLine(res) {
+  const lim = res.headers.get('X-RateLimit-Limit');
+  const rem = res.headers.get('X-RateLimit-Remaining');
+  const win = res.headers.get('X-RateLimit-Window');
+  return lim ? ` · quota ${rem}/${lim} left this ${win || 'window'}` : '';
+}
+
+async function fail(res) {
+  let detail = res.statusText;
+  try { const j = await res.json(); detail = j.message || j.error || detail; } catch {}
+  return `${res.status} — ${detail}`;
+}
+
+function show(frameId, blob) {
+  const frame = $(frameId);
+  frame.style.display = 'block';
+  frame.src = URL.createObjectURL(blob);
+}
+
+function save(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+}
+
+async function createPdf(delivery) {
+  say('createOut', 'Rendering…');
+  const body = {
+    content: $('md').value,
+    title: $('title').value,
+    format: $('fmt').value,
+    page: $('page').value,
+    pageNumbers: true
+  };
+  const res = await fetch(`/v1/create/text?delivery=${delivery}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) return say('createOut', await fail(res), 'err');
+  const blob = await res.blob();
+  say('createOut', `Created ${(blob.size / 1024).toFixed(1)} KB${quotaLine(res)}`, 'ok');
+  delivery === 'download' ? save(blob, 'document.pdf') : show('createPreview', blob);
+}
+
+async function inspect() {
+  const f = $('inspectFile').files[0];
+  if (!f) return say('inspectOut', 'Choose a PDF first.', 'err');
+  say('inspectOut', 'Reading…');
+  const fd = new FormData();
+  fd.append('file', f);
+  const res = await fetch('/v1/inspect', { method: 'POST', body: fd });
+  if (!res.ok) return say('inspectOut', await fail(res), 'err');
+  const info = await res.json();
+  const fields = info.fields.length
+    ? info.fields.map(x => `${x.name} (${x.type})`).join(', ')
+    : 'none';
+  say('inspectOut',
+    `<span class="ok">${info.pageCount} page(s)</span> · ${(info.byteCount / 1024).toFixed(1)} KB · ` +
+    `title: ${info.title || '—'} · form fields: ${fields}${quotaLine(res)}`);
+}
+
+async function merge(delivery) {
+  const files = $('mergeFiles').files;
+  if (files.length < 2) return say('mergeOut', 'Choose at least two PDFs.', 'err');
+  say('mergeOut', 'Merging…');
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  const res = await fetch(`/v1/merge?delivery=${delivery}`, { method: 'POST', body: fd });
+  if (!res.ok) return say('mergeOut', await fail(res), 'err');
+  const blob = await res.blob();
+  say('mergeOut', `Merged ${files.length} files into ${(blob.size / 1024).toFixed(1)} KB${quotaLine(res)}`, 'ok');
+  delivery === 'download' ? save(blob, 'merged.pdf') : show('mergePreview', blob);
+}
+
+async function word(delivery) {
+  const f = $('wordFile').files[0];
+  if (!f) return say('wordOut', 'Choose a .docx first.', 'err');
+  say('wordOut', 'Converting…');
+  const fd = new FormData();
+  fd.append('file', f);
+  const res = await fetch(`/v1/create/word?delivery=${delivery}`, { method: 'POST', body: fd });
+  if (!res.ok) return say('wordOut', await fail(res), 'err');
+  const blob = await res.blob();
+  const via = res.headers.get('X-PdfWerk-Converter') || 'unknown';
+  say('wordOut', `Converted via ${via} — ${(blob.size / 1024).toFixed(1)} KB${quotaLine(res)}`, 'ok');
+  delivery === 'download' ? save(blob, 'converted.pdf') : show('wordPreview', blob);
+}
+
+async function quota() {
+  const res = await fetch('/v1/quota');
+  const data = await res.json();
+  $('quotaOut').textContent =
+    `tier: ${data.tier}\n` +
+    data.quotas.map(q => `  ${q.action.padEnd(16)} ${JSON.stringify(q.remaining)}`).join('\n');
+}
+
+(async function loadActions() {
+  const res = await fetch('/v1/actions');
+  const actions = await res.json();
+  $('actions').innerHTML = actions.map(a => `
+    <div class="card">
+      <h3>${a.title}${a.requiresAi ? '<span class="tag">AI</span>' : ''}</h3>
+      <p>${a.summary}</p>
+      <p style="margin-top:8px"><code>POST ${a.endpoint}</code></p>
+    </div>`).join('');
+  quota();
+})();
+</script>
+</body>
+</html>

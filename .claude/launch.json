@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pdfwerk-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/PdfWerk.Api/PdfWerk.Api.csproj", "--launch-profile", "http"],
+      "port": 5272
+    }
+  ]
+}

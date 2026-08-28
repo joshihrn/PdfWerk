@@ -2,6 +2,7 @@ using System.Text;
 using PdfWerk.Core;
 using PdfWerk.Core.Abstractions;
 using UglyToad.PdfPig;
+using PdfPigWord = UglyToad.PdfPig.Content.Word;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 using UglyToad.PdfPig.Exceptions;
@@ -55,7 +56,7 @@ public sealed class PdfTextExtractor : IPdfTextExtractor
             return string.Empty;
 
         var sb = new StringBuilder();
-        Word? previous = null;
+        PdfPigWord? previous = null;
 
         foreach (var word in words)
         {
@@ -69,7 +70,7 @@ public sealed class PdfTextExtractor : IPdfTextExtractor
         return Normalise(sb.ToString());
     }
 
-    private static bool IsNewLine(Word previous, Word current)
+    private static bool IsNewLine(PdfPigWord previous, PdfPigWord current)
     {
         var previousBox = previous.BoundingBox;
         var currentBox = current.BoundingBox;

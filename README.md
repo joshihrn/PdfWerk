@@ -181,6 +181,11 @@ store — including a hardening suite that feeds the endpoints malformed files, 
 replacement text, hostile field names and degenerate geometry. They need no network, no API key
 and no Docker: SQLite backs the key store and a fake provider stands in for the model.
 
+## Deploying
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for DNS, TLS, and the two settings that decide whether your
+rate limits are real: Redis, and whether forwarded headers should be trusted.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).

@@ -68,6 +68,24 @@ a {
 
 a:hover { text-decoration: underline; }
 
+/*
+ * A link sitting inside a sentence is underlined always, not only on hover.
+ *
+ * Colour alone does not carry it: the accent against the muted body text around it measures
+ * 1.6:1 in light and 1.5:1 in dark, well under the 3:1 that would let colour stand on its own.
+ * Standalone links — navigation, cards, anything already framed as a control — are excluded,
+ * because there is no surrounding prose for them to be confused with.
+ */
+p a,
+li a,
+dd a,
+td a,
+.lede a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: from-font;
+}
+
 code, pre, kbd, samp {
   font-family: var(--mono);
   font-size: 0.9em;

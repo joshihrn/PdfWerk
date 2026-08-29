@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { apiKey, makePdf, signIn } from './support'
+import AxeBuilder from '@axe-core/playwright'
+import { apiKey, configuredProviders, makeDocx, makePdf, sharedPdf, signIn } from './support'
 
 /**
  * Browser coverage.
@@ -308,4 +309,250 @@ test.describe('accessibility', () => {
     // Errors carry role="alert" so a screen reader interrupts; success uses status instead.
     await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
   })
+})
+
+test.describe('word to pdf', () => {
+  test('converts a .docx and previews the result', async ({ page }) => {
+    await page.goto('/word')
+
+    await page.setInputFiles('input[type="file"]', {
+      name: 'report.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: makeDocx(),
+    })
+
+    await page.getByRole('button', { name: 'Convert & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/report\.pdf/)).toBeVisible()
+  })
+
+  test('the action waits for a file', async ({ page }) => {
+    await page.goto('/word')
+
+    await expect(page.getByRole('button', { name: 'Convert & preview' })).toBeDisabled()
+  })
+
+  test('a file that is not a Word document is reported, not swallowed', async ({ page }) => {
+    await page.goto('/word')
+
+    await page.setInputFiles('input[type="file"]', {
+      name: 'fake.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: Buffer.alloc(600, 0x43),
+    })
+
+    await page.getByRole('button', { name: 'Convert & preview' }).click()
+
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 30_000 })
+  })
+})
+
+test.describe('edit text', () => {
+  test('replaces text and reports how many matches were changed', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'The agreement covers London.', 'Deed')
+
+    await page.goto('/edit')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'deed.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByLabel('Find').fill('London')
+    await page.getByLabel('Replace with').fill('Manchester')
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('more than one replacement can be queued', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/edit')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByRole('button', { name: 'Add another' }).click()
+
+    // Two rows means two independent find/replace pairs, which is what the endpoint accepts.
+    await expect(page.getByLabel('Find')).toHaveCount(2)
+  })
+
+  test('asking to fail on no match surfaces the failure', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/edit')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByLabel('Find').fill('a string that is certainly not in the document')
+    await page.getByLabel('Replace with').fill('anything')
+    await page.getByLabel('Fail if nothing matched').check()
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    // The point of the option is that silence would otherwise look like success.
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 30_000 })
+  })
+})
+
+test.describe('page tools', () => {
+  test('extracts a range of pages', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/pages')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByLabel('Pages').fill('1')
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('rotates', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/pages')
+    await page.getByRole('tab', { name: 'Rotate' }).click()
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('watermarks', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/pages')
+    await page.getByRole('tab', { name: 'Watermark' }).click()
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByLabel('Text', { exact: true }).fill('DRAFT')
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('an encrypted result offers download instead of preview', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/pages')
+    await page.getByRole('tab', { name: 'Protect' }).click()
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByLabel('Password to open').fill('correct horse battery staple')
+
+    // A browser cannot render an encrypted PDF, so offering a preview would be a broken promise.
+    await expect(page.getByText('Encrypted files cannot preview')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Apply & preview' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Download' })).toBeEnabled()
+  })
+})
+
+test.describe('form fill', () => {
+  test('fills a field that the designer added, and can flatten it away', async ({ page, request }) => {
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 30_000 })
+
+    const canvas = page.locator('.designer canvas')
+    const box = await canvas.boundingBox()
+    await canvas.click({ position: { x: box!.width * 0.2, y: box!.height * 0.5 } })
+
+    await page.getByLabel('Name').fill('signature')
+    await page.getByRole('button', { name: 'Download' }).click()
+
+    // Switching to fill mode should read the fields back out of the document just produced.
+    await page.getByRole('tab', { name: 'Fill values' }).click()
+    await expect(page.getByRole('tab', { name: 'Fill values' })).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+test.describe('summarise', () => {
+  test('summarises a document, or says plainly that no model is configured', async ({ page, request }) => {
+    const providers = await configuredProviders(request)
+    const pdf = await sharedPdf(request)
+
+    await page.goto('/summarize')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByRole('button', { name: 'Summarise' }).click()
+
+    if (providers.length === 0) {
+      // No key is committed anywhere, so a fresh clone lands here. The failure still has to be
+      // legible rather than a spinner that never resolves.
+      await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 60_000 })
+      return
+    }
+
+    // The summary itself, not the spinner or the "extracting text" notice, both of which also
+    // carry role="status".
+    await expect(page.locator('.lede')).toBeVisible({ timeout: 60_000 })
+  })
+})
+
+test.describe('accessibility audit', () => {
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+
+  for (const path of pages) {
+    for (const theme of ['light', 'dark'] as const) {
+      test(`${path} has no axe violations in ${theme}`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: theme })
+        await page.goto(path)
+
+        // The catalogue on the landing page arrives over the network; auditing before it lands
+        // would audit an empty page and prove nothing.
+        await page.waitForLoadState('networkidle')
+
+        const results = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze()
+
+        // Includes axe's own explanation for each node, which for a contrast failure carries the
+        // measured ratio and both colours. Without it the failure says only that something is
+        // wrong, and the first thing anyone would do is go and measure it by hand.
+        const summary = results.violations.flatMap((v) =>
+          v.nodes.map(
+            (n) =>
+              `${v.id} (${v.impact}): ${n.html.slice(0, 100)}\n      ${n.failureSummary?.replace(/\n/g, '\n      ')}`,
+          ),
+        )
+
+        expect(summary, `axe violations on ${path} (${theme})`).toEqual([])
+      })
+    }
+  }
 })

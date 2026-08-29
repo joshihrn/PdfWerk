@@ -45,9 +45,54 @@ export async function makePdf(
   return Buffer.from(await response.body())
 }
 
+let cachedPdf: Buffer | null = null
+
+/**
+ * One fixture PDF for the whole run.
+ *
+ * Most tests only need *a* valid PDF, not a particular one, and creating a fresh one each time
+ * spends CreateFromText quota that the create tests actually need. Use `makePdf` directly when
+ * the content matters.
+ */
+export async function sharedPdf(request: APIRequestContext): Promise<Buffer> {
+  if (cachedPdf) return cachedPdf
+
+  cachedPdf = await makePdf(
+    request,
+    await apiKey(request),
+    '# Contract\n\nSigned on behalf of both parties.\n\nThe quick brown fox jumps over the lazy dog.',
+    'Shared fixture',
+  )
+
+  return cachedPdf
+}
+
 /** Multipart file part in the shape Playwright's request API expects. */
 export function pdfPart(buffer: Buffer, name = 'document.pdf') {
   return { name, mimeType: 'application/pdf', buffer }
+}
+
+export function docxPart(buffer: Buffer, name = 'document.docx') {
+  return {
+    name,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    buffer,
+  }
+}
+
+/**
+ * Which AI providers the server can actually reach.
+ *
+ * Summarisation needs a model, and a key is deliberately not committed anywhere. Tests that
+ * need one skip rather than fail when none is configured, so a fresh clone runs green without
+ * pretending the feature was exercised.
+ */
+export async function configuredProviders(request: APIRequestContext): Promise<string[]> {
+  const response = await request.get('/v1/providers')
+  if (!response.ok()) return []
+
+  const body = (await response.json()) as { key: string; configured: boolean }[]
+  return body.filter((p) => p.configured).map((p) => p.key)
 }
 
 export function isPdf(buffer: Buffer): boolean {

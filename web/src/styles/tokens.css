@@ -19,7 +19,12 @@
   --n-200: #e4e7ee;
   --n-300: #d3d8e2;
   --n-400: #9aa3b4;
-  --n-500: #6b7486;
+  /*
+   * Darkened from #6b7486, which measured 4.23:1 on --bg-sunken and 4.46:1 on --bg — both
+   * under the 4.5:1 that WCAG AA requires of the small text this step is used for. It reaches
+   * text only through --fg-subtle, so fixing the ramp fixes every use of it at once.
+   */
+  --n-500: #636b7c;
   --n-600: #4d5567;
   --n-700: #363d4d;
   --n-800: #232937;

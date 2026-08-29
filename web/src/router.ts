@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { applyRouteMetadata } from './seo'
+import { page as recordPageView } from './analytics'
 
 /**
  * Views are lazily loaded so the landing page — the only one most visitors see — does not carry
@@ -17,6 +18,9 @@ const routes: RouteRecordRaw[] = [
   { path: '/inspect', name: 'inspect', component: () => import('./views/InspectView.vue') },
   { path: '/api', name: 'api', component: () => import('./views/ApiView.vue') },
 
+  { path: '/privacy', name: 'privacy', component: () => import('./views/PrivacyView.vue') },
+  { path: '/terms', name: 'terms', component: () => import('./views/TermsView.vue') },
+
   // Not in the navigation, and not in the sitemap. Reachable by anyone who types it, but there is
   // nothing behind it without an administrator's key, so hiding the route is tidiness rather than
   // a security measure — the server is what refuses.
@@ -32,4 +36,10 @@ export const router = createRouter({
 
 // After the navigation, not before: a title that changes while the old page is still on screen
 // describes something the reader is not looking at yet.
-router.afterEach((to) => applyRouteMetadata(to.path))
+router.afterEach((to) => {
+  applyRouteMetadata(to.path)
+
+  // After the title is set, so the page view carries the right one. Does nothing at all until
+  // the visitor has accepted analytics.
+  recordPageView(to.path)
+})

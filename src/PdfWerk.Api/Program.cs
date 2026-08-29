@@ -129,7 +129,12 @@ builder.Services.AddSingleton(provider =>
     var environment = provider.GetRequiredService<IWebHostEnvironment>();
     var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
 
-    return new SeoShell(provider.GetRequiredService<SeoCatalogue>(), Path.Combine(root, "index.html"));
+    var configuration = provider.GetRequiredService<IConfiguration>();
+
+    return new SeoShell(
+        provider.GetRequiredService<SeoCatalogue>(),
+        Path.Combine(root, "index.html"),
+        configuration["Analytics:MeasurementId"] ?? string.Empty);
 });
 
 var app = builder.Build();

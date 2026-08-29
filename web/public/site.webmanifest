@@ -1,0 +1,15 @@
+{
+  "name": "PdfWerk",
+  "short_name": "PdfWerk",
+  "description": "PDF operations as an HTTP API — create, edit, merge, split, watermark, protect and summarise.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0e15",
+  "theme_color": "#0b0e15",
+  "icons": [
+    { "src": "/brand/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

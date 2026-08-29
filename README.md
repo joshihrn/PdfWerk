@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-185 Playwright tests against a real running instance — 57 driving the HTTP API directly and 128
+202 Playwright tests against a real running instance — 57 driving the HTTP API directly and 145
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -295,6 +295,30 @@ Things worth knowing:
 - The portal is `noindex`, excluded from the sitemap, disallowed in `robots.txt` and absent from
   the navigation. None of that is a security measure — the server refuses anyone without a key —
   it just keeps it out of search results.
+
+## Brand and analytics
+
+Brand assets live in [`web/public/brand/`](web/public/brand): the mark on its own, a single-colour
+version, horizontal and stacked lockups, a reversed lockup for dark grounds, and two favicons —
+one fixed, one that adapts to a dark browser tab. The mark is a page held inside code brackets,
+which is the shortest way to say the thing this product is: an API first, with a document on the
+end of it.
+
+PNG icons and the Open Graph card are generated rather than hand-exported, so they cannot drift
+from the SVGs:
+
+```bash
+node web/tools/make-brand-assets.mjs
+```
+
+Google Analytics is configured with `Analytics:MeasurementId` and **nothing loads until a visitor
+accepts**. Analytics cookies need consent before they are set in the UK and the EU — there is no
+legitimate-interest route — so the gtag script is not fetched, no cookie is written and no request
+reaches Google until the banner is accepted. Leave the setting empty and the banner never appears
+at all, which is the sensible default for a self-hosted copy.
+
+The measurement ID is written into the served HTML by the server, not baked into the bundle, so a
+self-hosted instance reports to its own property without a rebuild.
 
 ## Deploying
 

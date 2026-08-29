@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 32" width="168" height="32" role="img" aria-label="PdfWerk">
+  <!--
+    Horizontal lockup. The wordmark is set in the system sans rather than outlined, so it stays
+    editable and matches the type on the site exactly. For print or for embedding somewhere the
+    stack cannot be trusted, convert the text to outlines first.
+
+    Clear space is the width of one bracket — 3 units on the mark's 24-unit grid — on every side.
+  -->
+  <g fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" transform="translate(4 4) scale(1)">
+    <path stroke="#3a5fcc" d="M6.4 3.4H3.6v17.2h2.8M17.6 3.4h2.8v17.2h-2.8"/>
+    <path stroke="#151a24" d="M8.6 6.4h4.6L15.8 9v9H8.6z"/>
+    <path stroke="#151a24" d="M13.2 6.4V9h2.6"/>
+  </g>
+
+  <text x="36" y="21.5"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="19" font-weight="600" letter-spacing="-0.5" fill="#151a24">Pdf<tspan fill="#3a5fcc">Werk</tspan></text>
+</svg>

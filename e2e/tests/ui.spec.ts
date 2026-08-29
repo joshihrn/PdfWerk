@@ -763,7 +763,7 @@ test.describe('summarise', () => {
 })
 
 test.describe('accessibility audit', () => {
-  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
 
   for (const path of pages) {
     for (const theme of ['light', 'dark'] as const) {
@@ -1283,7 +1283,7 @@ test.describe('hostile content from a document', () => {
 })
 
 test.describe('console hygiene', () => {
-  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
 
   for (const path of pages) {
     test(`${path} loads without console errors`, async ({ page }) => {
@@ -1630,7 +1630,7 @@ test.describe('metadata during navigation', () => {
   })
 
   test('the client and the server agree on every page title', async ({ page, request }) => {
-    for (const route of ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']) {
+    for (const route of ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']) {
       const served = (await (await request.get(route)).text()).match(/<title>([^<]+)<\/title>/)?.[1]
 
       await page.goto(route)
@@ -1775,5 +1775,162 @@ test.describe('admin portal', () => {
 
     await page.goto('/')
     await expect(page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Administration' })).toHaveCount(0)
+  })
+})
+
+test.describe('consent and analytics', () => {
+  /** Every request the page makes to anything Google-shaped. */
+  function watchGoogle(page: import('@playwright/test').Page) {
+    const seen: string[] = []
+    page.on('request', (r) => {
+      if (/googletagmanager|google-analytics|gtag/i.test(r.url())) seen.push(r.url())
+    })
+    return seen
+  }
+
+  test('nothing reaches Google before consent is given', async ({ page }) => {
+    const google = watchGoogle(page)
+
+    await page.goto('/')
+    await expect(page.locator('.consent')).toBeVisible({ timeout: 20_000 })
+
+    // Browse a little, to be sure it is not merely deferred until the second page.
+    await page.goto('/create')
+    await page.goto('/merge')
+
+    // The whole legal basis for the banner is that nothing has happened yet. Loading the script
+    // and only withholding the cookie would not satisfy it.
+    expect(google, `contacted Google before consent: ${google.join(', ')}`).toEqual([])
+    expect(await page.context().cookies()).toEqual([])
+  })
+
+  test('declining is remembered, and still loads nothing', async ({ page }) => {
+    const google = watchGoogle(page)
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'No thanks' }).click()
+
+    await expect(page.locator('.consent')).toHaveCount(0)
+
+    await page.goto('/create')
+    await expect(page.locator('.consent')).toHaveCount(0)
+
+    expect(google).toEqual([])
+  })
+
+  test('accepting loads analytics for the configured property', async ({ page }) => {
+    const google = watchGoogle(page)
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Allow analytics' }).click()
+
+    await expect.poll(() => google.length, { timeout: 20_000 }).toBeGreaterThan(0)
+
+    // The ID has to be the one the server declared, not one baked into the bundle.
+    const declared = await page.getAttribute('meta[name="pdfwerk:analytics"]', 'content')
+    expect(declared).toMatch(/^G-/)
+    expect(google[0]).toContain(declared!)
+  })
+
+  test('the choice survives a reload, and can be taken back', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'No thanks' }).click()
+    await page.reload()
+
+    // Asking again on every visit is how a banner becomes something people click away blindly.
+    await expect(page.locator('.consent')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Cookies' }).click()
+    await expect(page.locator('.consent')).toBeVisible()
+  })
+
+  test('the banner does not cover the footer it points at', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('.consent')).toBeVisible({ timeout: 20_000 })
+
+    // The banner is fixed to the bottom, so without reserved space it sits on top of the footer —
+    // including the privacy link the banner's own text tells you to read.
+    const privacy = page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Privacy' })
+
+    await privacy.scrollIntoViewIfNeeded()
+    await privacy.click()
+
+    await expect(page.getByRole('heading', { name: 'Privacy', level: 1 })).toBeVisible()
+  })
+
+  test('the banner offers refusal as plainly as acceptance', async ({ page }) => {
+    await page.goto('/')
+
+    const accept = page.getByRole('button', { name: 'Allow analytics' })
+    const refuse = page.getByRole('button', { name: 'No thanks' })
+
+    await expect(accept).toBeVisible()
+    await expect(refuse).toBeVisible()
+
+    // Consent obtained by making refusal harder is not freely given. Same size, same row.
+    const [a, r] = [await accept.boundingBox(), await refuse.boundingBox()]
+    expect(Math.abs(a!.height - r!.height)).toBeLessThan(4)
+    expect(Math.abs(a!.y - r!.y)).toBeLessThan(4)
+  })
+})
+
+test.describe('brand and legal pages', () => {
+  test('the mark is in the header and the footer', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.locator('.brand__mark')).toBeVisible()
+    await expect(page.locator('.app-footer__mark')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'PdfWerk home' })).toBeVisible()
+  })
+
+  test('the footer links to the legal pages', async ({ page }) => {
+    await page.goto('/')
+
+    const footer = page.getByRole('navigation', { name: 'Site' })
+
+    await footer.getByRole('link', { name: 'Privacy' }).click()
+    await expect(page.getByRole('heading', { name: 'Privacy', level: 1 })).toBeVisible()
+
+    await footer.getByRole('link', { name: 'Terms' }).click()
+    await expect(page.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible()
+  })
+
+  test('the privacy notice states what actually happens to a document', async ({ page }) => {
+    await page.goto('/privacy')
+
+    // These three are the facts a generic template would miss, and they are the ones that would
+    // change somebody's mind about using a tool.
+    await expect(page.getByText(/never written to disk/i)).toBeVisible()
+    await expect(page.getByText(/IP address/i).first()).toBeVisible()
+    await expect(page.getByText(/summaris/i).first()).toBeVisible()
+  })
+
+  test('the icons and manifest are served', async ({ request }) => {
+    for (const [path, type] of [
+      ['/brand/favicon-adaptive.svg', 'image/svg+xml'],
+      ['/brand/mark.svg', 'image/svg+xml'],
+      ['/brand/logo-horizontal.svg', 'image/svg+xml'],
+      ['/icon-32.png', 'image/png'],
+      ['/apple-touch-icon.png', 'image/png'],
+      ['/icon-maskable-512.png', 'image/png'],
+      ['/site.webmanifest', ''],
+    ] as const) {
+      const response = await request.get(path)
+
+      expect(response.status(), `${path} should be served`).toBe(200)
+      if (type) expect(response.headers()['content-type']).toContain(type)
+    }
+  })
+
+  test('the manifest points at icons that exist', async ({ request }) => {
+    const manifest = await (await request.get('/site.webmanifest')).json()
+
+    // An install prompt that fails on a 404 icon is the kind of thing nobody notices until a
+    // user tries to add the app to their home screen.
+    for (const icon of manifest.icons) {
+      expect((await request.get(icon.src)).status(), `${icon.src} is referenced but missing`).toBe(200)
+    }
+
+    expect(manifest.icons.some((i: { purpose?: string }) => i.purpose === 'maskable')).toBe(true)
   })
 })

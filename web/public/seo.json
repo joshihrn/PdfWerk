@@ -85,6 +85,22 @@
       "type": "website"
     },
     {
+      "path": "/privacy",
+      "title": "Privacy \u2014 PdfWerk",
+      "description": "What PdfWerk collects and why: documents are processed in memory and never stored, requests are logged with IP addresses to stop abuse, and only the summarise tool sends text to an AI provider.",
+      "heading": "Privacy",
+      "intro": "Your documents are processed in memory and never written to disk. Requests are logged with your IP address to stop abuse. Only the summarise tool sends anything to a third party.",
+      "type": "website"
+    },
+    {
+      "path": "/terms",
+      "title": "Terms of use \u2014 PdfWerk",
+      "description": "Use PdfWerk for anything lawful within the published rate limits. Free and provided as-is, source-available under the Business Source License 1.1.",
+      "heading": "Terms of use",
+      "intro": "Use it for anything lawful, within the published rate limits. Do not upload documents you have no right to. It is free and provided as-is.",
+      "type": "website"
+    },
+    {
       "path": "/admin",
       "title": "Administration \u2014 PdfWerk",
       "description": "Administrative access to the request log, blocked addresses and rate limits. Requires an administrator key.",

@@ -2,6 +2,8 @@
 import { onMounted, ref, watch } from 'vue'
 import { api } from './api/client'
 import { PwBadge } from './components/ui'
+import ConsentBanner from './components/ConsentBanner.vue'
+import { analyticsAvailable, reconsider, restore } from './analytics'
 
 /**
  * The application shell: a single top bar with product, navigation and account state.
@@ -10,6 +12,19 @@ import { PwBadge } from './components/ui'
  * 240px of every screen restating a flat list — and the working area is where the PDF preview
  * needs to live.
  */
+
+const consent = ref<InstanceType<typeof ConsentBanner> | null>(null)
+const analyticsOffered = analyticsAvailable()
+
+// Reloads analytics for a visitor who already accepted, before anything else runs. A previous
+// yes should not have to be given again on every visit.
+restore()
+
+/** Clears the stored decision and shows the banner, so a choice can be taken back. */
+function askAgain() {
+  reconsider()
+  consent.value?.open()
+}
 
 const tier = ref<string>('')
 const reachable = ref(true)
@@ -79,13 +94,19 @@ const nav = [
   <header class="app-nav">
     <div class="app-nav__inner">
       <RouterLink to="/" class="brand" aria-label="PdfWerk home">
-        <svg class="brand__mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-          <rect x="2.5" y="1.5" width="12" height="17" rx="1.5" fill="none"
-                stroke="currentColor" stroke-width="1.4" />
-          <path d="M5.5 6.5h6M5.5 9.5h6M5.5 12.5h3.5" stroke="currentColor"
-                stroke-width="1.4" stroke-linecap="round" />
+        <!--
+          Inlined rather than loaded from /brand/mark.svg: the header is the first thing painted,
+          and a logo that arrives one request later is a visible flinch on every page load. The
+          file in public/brand is the same drawing, for everywhere outside this app.
+        -->
+        <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <g fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path class="brand__brackets" d="M6.4 3.4H3.6v17.2h2.8M17.6 3.4h2.8v17.2h-2.8" />
+            <path stroke="currentColor" d="M8.6 6.4h4.6L15.8 9v9H8.6z" />
+            <path stroke="currentColor" d="M13.2 6.4V9h2.6" />
+          </g>
         </svg>
-        <span class="brand__name">PdfWerk</span>
+        <span class="brand__name">Pdf<span class="brand__accent">Werk</span></span>
       </RouterLink>
 
       <nav class="app-nav__links" aria-label="Tools">
@@ -131,15 +152,31 @@ const nav = [
     <RouterView />
   </main>
 
+  <ConsentBanner ref="consent" />
+
   <footer class="app-footer">
     <div class="app-footer__inner">
-      <span>PdfWerk</span>
-      <span class="app-footer__sep" aria-hidden="true">·</span>
-      <a href="https://github.com/joshihrn/PdfWerk/blob/main/LICENSING.md" target="_blank" rel="noopener">BSL 1.1</a>
-      <span class="app-footer__sep" aria-hidden="true">·</span>
-      <a href="/docs" target="_blank" rel="noopener">API reference</a>
-      <span class="app-footer__sep" aria-hidden="true">·</span>
-      <a href="https://github.com/joshihrn/PdfWerk" target="_blank" rel="noopener">GitHub</a>
+      <div class="app-footer__brand">
+        <svg class="app-footer__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <g fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path class="brand__brackets" d="M6.4 3.4H3.6v17.2h2.8M17.6 3.4h2.8v17.2h-2.8" />
+            <path stroke="currentColor" d="M8.6 6.4h4.6L15.8 9v9H8.6z" />
+            <path stroke="currentColor" d="M13.2 6.4V9h2.6" />
+          </g>
+        </svg>
+        <span>PdfWerk</span>
+      </div>
+
+      <nav class="app-footer__links" aria-label="Site">
+        <RouterLink to="/privacy">Privacy</RouterLink>
+        <RouterLink to="/terms">Terms</RouterLink>
+        <a href="/docs" target="_blank" rel="noopener">API reference</a>
+        <a href="https://github.com/joshihrn/PdfWerk/blob/main/LICENSING.md" target="_blank" rel="noopener">BSL 1.1</a>
+        <a href="https://github.com/joshihrn/PdfWerk" target="_blank" rel="noopener">GitHub</a>
+        <button v-if="analyticsOffered" type="button" class="app-footer__link" @click="askAgain">
+          Cookies
+        </button>
+      </nav>
     </div>
   </footer>
 </template>
@@ -175,7 +212,12 @@ const nav = [
 }
 
 .brand:hover { text-decoration: none; }
-.brand__mark { width: 18px; height: 18px; color: var(--fg-muted); }
+
+/* The page follows the surrounding text so the mark sits at the same weight as the wordmark;
+   only the brackets carry the accent. */
+.brand__mark { width: 20px; height: 20px; color: var(--fg); flex: none; }
+.brand__brackets { stroke: var(--link); }
+.brand__accent { color: var(--link); }
 
 .app-nav__links {
   display: flex;
@@ -256,18 +298,48 @@ const nav = [
 .app-footer__inner {
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: var(--s-4) var(--s-6);
+  padding: var(--s-5) var(--s-6);
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-6);
   font-size: var(--t-12);
   color: var(--fg-subtle);
   flex-wrap: wrap;
 }
 
+.app-footer__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-muted);
+  font-weight: var(--w-medium);
+}
+
+.app-footer__mark { width: 16px; height: 16px; color: var(--fg-muted); flex: none; }
+
+.app-footer__links {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+/* The cookie control is a button because it changes state rather than navigating, but it must
+   sit in the row as though it were another link. */
+.app-footer__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.app-footer__link:hover { color: var(--fg-muted); text-decoration: underline; }
+
 .app-footer__inner a { color: var(--fg-subtle); }
 .app-footer__inner a:hover { color: var(--fg-muted); }
-.app-footer__sep { opacity: 0.5; }
 
 @media (max-width: 720px) {
   .app-nav__inner { padding: 0 var(--s-4); gap: var(--s-3); }

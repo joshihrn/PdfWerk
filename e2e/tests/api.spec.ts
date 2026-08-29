@@ -777,7 +777,7 @@ test.describe('response shape', () => {
  * a link to any page previews and indexes as itself rather than as the generic shell.
  */
 test.describe('search engine metadata', () => {
-  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
 
   test('every page carries its own title and description', async ({ request }) => {
     const seen = new Map<string, string>()

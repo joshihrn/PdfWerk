@@ -27,7 +27,7 @@ namespace PdfWerk.Api.Infrastructure;
 /// disk. The page then loads, renders nothing but the crawlable summary, and reports no error at
 /// all, which is a miserable thing to diagnose.
 /// </remarks>
-public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
+public sealed class SeoShell(SeoCatalogue catalogue, string indexPath, string analyticsId = "")
 {
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -100,6 +100,12 @@ public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
 
         if (!string.IsNullOrWhiteSpace(catalogue.Document.Twitter))
             head.AppendLine($"    <meta name=\"twitter:site\" content=\"{Escape(catalogue.Document.Twitter!)}\" />");
+
+        // Declared, not loaded. The browser reads this and decides whether to fetch anything
+        // from Google, which it only does once the visitor has said yes. An empty value — the
+        // normal state for a self-hosted copy — means the consent banner never appears either.
+        if (!string.IsNullOrWhiteSpace(analyticsId))
+            head.AppendLine($"    <meta name=\"pdfwerk:analytics\" content=\"{Escape(analyticsId)}\" />");
 
         head.AppendLine($"    <script type=\"application/ld+json\">{StructuredData(page, canonical)}</script>");
 

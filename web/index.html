@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PdfWerk — PDF tools, API and embeddable widgets</title>
     <meta name="description" content="Create PDFs from text or Word, edit text inside them, design and fill form fields, merge documents and summarise them. Source-available under the Business Source License; free to self-host." />
+
+    <!--
+      SVG first for browsers that take it — it stays sharp at any size and adapts to a dark tab.
+      The 32px PNG is the fallback for those that do not, and Safari wants the touch icon.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon-adaptive.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#0b0e15" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f8f9fb" media="(prefers-color-scheme: light)" />
   </head>
   <body>
     <div id="app"></div>

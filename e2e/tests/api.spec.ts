@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test'
-import { apiKey, authHeaders, isPdf, makeDocx, makePdf, pdfPart, sharedPdf } from './support'
+import {
+  apiKey,
+  authHeaders,
+  configuredProviders,
+  isPdf,
+  makeDocx,
+  makePdf,
+  pdfPart,
+  sharedPdf,
+} from './support'
 
 /**
  * API-level coverage.
@@ -466,8 +475,23 @@ test.describe('text replacement', () => {
     // Reading the text back goes through summarisation, which calls a model.
     test.setTimeout(120_000)
 
+    // Declared up front rather than degraded silently. Reading the text back needs a model, and
+    // quietly dropping the assertions when none is configured would report green for a test that
+    // checked nothing — which is worse than an honest skip.
+    test.skip(
+      (await configuredProviders(request)).length === 0,
+      'text extraction needs a configured AI provider',
+    )
+
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key, 'The agreement covers London.', 'Deed')
+    // Long enough to be summarisable: reading the text back goes through summarisation, which
+    // refuses documents too short to condense.
+    const pdf = await makePdf(
+      request,
+      key,
+      'This agreement covers London and the surrounding counties for the full term of the lease.',
+      'Deed',
+    )
 
     const edited = await request.post('/v1/edit/text?delivery=stream', {
       headers: authHeaders(key),
@@ -484,20 +508,50 @@ test.describe('text replacement', () => {
     // Read it back through the service rather than trusting the response. Covering old text with
     // a white box would pass a visual check while leaving it selectable and searchable, which is
     // a disclosure risk, so the assertion is that the original is genuinely gone.
+    // The field is `includeExtractedText`. Naming it `includeText` gets a cheerful 200 with no
+    // text in it, because unknown JSON properties are ignored — which is how this test spent its
+    // first run asserting against undefined.
     const text = await (
       await request.post('/v1/summarize', {
         headers: authHeaders(key),
+        // The suite-wide actionTimeout is 10s, which a model round trip will exceed. Raising the
+        // test timeout alone does not help: the per-action limit fires first.
+        timeout: 90_000,
         multipart: {
           file: pdfPart(Buffer.from(await edited.body())),
-          request: JSON.stringify({ includeText: true, targetWords: 20 }),
+          request: JSON.stringify({ includeExtractedText: true, targetWords: 20 }),
         },
       })
     ).json().catch(() => null)
 
-    if (text?.extractedText) {
-      expect(text.extractedText).toContain('Manchester')
-      expect(text.extractedText).not.toContain('London')
-    }
+    expect(text?.extractedText, 'the service should have returned the extracted text').toBeTruthy()
+
+    // Covering the old text with a white box would pass a visual check while leaving it
+    // selectable, searchable and copyable — a disclosure risk, not a cosmetic one.
+    expect(text.extractedText).toContain('Manchester')
+    expect(text.extractedText).not.toContain('London')
+  })
+
+  test('a short but readable document is not blamed on scanning', async ({ request }) => {
+    test.setTimeout(120_000)
+    test.skip((await configuredProviders(request)).length === 0, 'needs a configured AI provider')
+
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'Paid in full.', null as unknown as string)
+
+    const response = await request.post('/v1/summarize', {
+      headers: authHeaders(key),
+      multipart: { file: pdfPart(pdf), request: JSON.stringify({ targetWords: 20 }) },
+    })
+
+    expect(response.status()).toBe(400)
+
+    const body = await response.json()
+
+    // Sending someone to OCR a document that is already perfectly readable costs far more time
+    // than the operation itself. The refusal has to name the real reason.
+    expect(body.message).not.toMatch(/OCR/i)
+    expect(body.message).toMatch(/too little/i)
   })
 
   test('failOnNoMatch turns a silent no-op into an error', async ({ request }) => {

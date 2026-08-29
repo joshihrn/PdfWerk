@@ -182,7 +182,7 @@ the only transform between mouse and document is the display scale.
 dotnet test
 ```
 
-163 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
+165 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
 store — including a hardening suite that feeds the endpoints malformed files, PDF syntax inside
 replacement text, hostile field names and degenerate geometry. They need no network, no API key
 and no Docker: SQLite backs the key store and a fake provider stands in for the model.
@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-148 Playwright tests against a real running instance — 34 driving the HTTP API directly and 114
+149 Playwright tests against a real running instance — 36 driving the HTTP API directly and 113
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.

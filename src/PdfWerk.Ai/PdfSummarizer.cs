@@ -38,6 +38,12 @@ public sealed class PdfSummarizer(
     /// <summary>Never split into more pieces than this; beyond it the merge stops being useful.</summary>
     private const int MaxChunks = 24;
 
+    /// <summary>
+    /// Below this there is nothing for a summary to condense — the answer would be longer than
+    /// the document. Spending a model call to say so is worse than refusing quickly.
+    /// </summary>
+    private const int MinimumSummarisableLength = 40;
+
     public async Task<SummarizeResult> SummarizeAsync(
         byte[] pdf,
         SummarizeRequest request,
@@ -48,10 +54,26 @@ public sealed class PdfSummarizer(
         var pages = extractor.ExtractPages(pdf);
         var text = string.Join("\n\n", pages.Where(p => !string.IsNullOrWhiteSpace(p))).Trim();
 
-        if (text.Length < 40)
+        // Two different failures, and telling them apart matters: one is a document problem the
+        // caller can fix with OCR, the other is a document that is simply too short to be worth
+        // summarising. Reporting "no readable text" for a document that plainly has some sends
+        // people looking for a scanning fault that is not there.
+        //
+        // The signal is whether any words came back at all, not how many characters. A scanned
+        // page draws its text as an image, so extraction yields nothing legible — stray
+        // punctuation at most. A short document yields real words, just few of them.
+        if (!text.Any(char.IsLetterOrDigit))
         {
             throw new PdfWerkException(
                 "No readable text was found in this PDF. Scanned documents need OCR before they can be summarised.");
+        }
+
+        if (text.Length < MinimumSummarisableLength)
+        {
+            throw new PdfWerkException(
+                $"This document holds only {text.Length} characters of text, which is too little to " +
+                $"summarise usefully — at least {MinimumSummarisableLength} are needed. The text that " +
+                "was found is returned by /v1/inspect if you need it.");
         }
 
         var words = CountWords(text);

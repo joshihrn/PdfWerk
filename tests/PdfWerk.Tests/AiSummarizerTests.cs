@@ -154,14 +154,59 @@ public class AiSummarizerTests
     [Fact]
     public async Task A_scanned_document_with_no_text_says_so()
     {
-        // A PDF with a page but essentially no extractable text stands in for a scan.
-        var blank = Composer.Create(new CreateFromTextRequest { Content = ".", Format = TextFormat.Plain }).Content;
+        // A page carrying no letters or digits at all, which is what a scan looks like to a text
+        // extractor: the words are pixels, so nothing legible comes back.
+        //
+        // Page numbering has to be off. With it on, the fixture picked up a page number and was
+        // no longer text-free — it passed only because it also fell under the length threshold,
+        // so it was never really testing the scanned case.
+        var blank = Composer.Create(new CreateFromTextRequest
+        {
+            Content = ".",
+            Format = TextFormat.Plain,
+            PageNumbers = false,
+        }).Content;
 
         var ex = await Assert.ThrowsAsync<PdfWerkException>(() =>
             Summarizer(Registry("gemini", new FakeProvider("gemini", true)))
                 .SummarizeAsync(blank, new SummarizeRequest()));
 
         Assert.Contains("OCR", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_document_with_real_but_very_short_text_is_not_blamed_on_scanning()
+    {
+        // Readable, just brief. Pointing this caller at OCR would send them looking for a
+        // scanning fault that does not exist, which is the kind of wrong-diagnosis error that
+        // costs far more time than the operation itself.
+        var brief = Composer.Create(new CreateFromTextRequest
+        {
+            Content = "Paid in full.",
+            Format = TextFormat.Plain,
+        }).Content;
+
+        var ex = await Assert.ThrowsAsync<PdfWerkException>(() =>
+            Summarizer(Registry("gemini", new FakeProvider("gemini", true)))
+                .SummarizeAsync(brief, new SummarizeRequest()));
+
+        Assert.DoesNotContain("OCR", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No readable text", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("too little", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_document_just_past_the_threshold_is_summarised()
+    {
+        // Guards the boundary from the other side: the short-text refusal must not start
+        // swallowing documents that are perfectly summarisable.
+        var provider = new FakeProvider("gemini", true);
+
+        var result = await Summarizer(Registry("gemini", provider)).SummarizeAsync(
+            Document("The tenant shall keep the premises in good repair throughout the term."),
+            new SummarizeRequest());
+
+        Assert.False(string.IsNullOrWhiteSpace(result.Summary));
     }
 
     // ---- prompt safety ---------------------------------------------------

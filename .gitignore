@@ -33,3 +33,10 @@ Thumbs.db
 # Runtime scratch
 /tmp/
 storage/
+*.db
+*.db-shm
+*.db-wal
+
+# Built UI. Generated from web/ by `npm run build`, and by the Dockerfile on deploy,
+# so the compiled bundle is not tracked.
+src/PdfWerk.Api/wwwroot/

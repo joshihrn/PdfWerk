@@ -110,6 +110,10 @@ app.MapKeyEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "pdfwerk" }))
    .ExcludeFromDescription();
 
+// The UI is a single-page app, so a deep link like /forms has no file behind it. Anything that
+// is not an API route or a real asset is handed to index.html for the router to resolve.
+app.MapFallbackToFile("index.html");
+
 await InfrastructureServiceCollectionExtensions.InitialiseStorageAsync(app.Services);
 
 WarnIfLimiterIsSingleProcess(app);

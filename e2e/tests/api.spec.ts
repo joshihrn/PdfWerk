@@ -768,3 +768,146 @@ test.describe('response shape', () => {
     expect(response.headers()['x-pdfwerk-action']).toBeTruthy()
   })
 })
+
+/**
+ * What a crawler receives.
+ *
+ * The app renders in the browser, so everything here is fetched as plain HTTP with no JavaScript
+ * anywhere — which is exactly how Bing, and every social scraper, sees the site. If these pass,
+ * a link to any page previews and indexes as itself rather than as the generic shell.
+ */
+test.describe('search engine metadata', () => {
+  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+
+  test('every page carries its own title and description', async ({ request }) => {
+    const seen = new Map<string, string>()
+
+    for (const route of ROUTES) {
+      const html = await (await request.get(route)).text()
+
+      const title = html.match(/<title>([^<]+)<\/title>/)?.[1]
+      const description = html.match(/<meta name="description" content="([^"]+)"/)?.[1]
+
+      expect(title, `${route} should have a title`).toBeTruthy()
+      expect(description, `${route} should have a description`).toBeTruthy()
+
+      // A description over about 160 characters is truncated in the results page, so the tail of
+      // it is wasted effort rather than a mistake — but under 70 usually means it says nothing.
+      expect(description!.length, `${route} description length`).toBeGreaterThan(70)
+
+      // Duplicate titles across pages are the single most common way a small site competes with
+      // itself, and the reason the shell's one shared title was worth replacing.
+      expect(seen.has(title!), `${route} duplicates the title of ${seen.get(title!)}`).toBe(false)
+      seen.set(title!, route)
+    }
+  })
+
+  test('every page declares itself canonical at the configured origin', async ({ request }) => {
+    for (const route of ROUTES) {
+      const html = await (await request.get(route)).text()
+      const canonical = html.match(/<link rel="canonical" href="([^"]+)"/)?.[1]
+
+      expect(canonical, `${route} should be canonical`).toBeTruthy()
+      expect(canonical).toMatch(/^https?:\/\//)
+      expect(canonical!.endsWith(route === '/' ? '/' : route)).toBe(true)
+    }
+  })
+
+  test('a shared link previews as the page, not as the site', async ({ request }) => {
+    const html = await (await request.get('/merge')).text()
+
+    for (const tag of ['og:title', 'og:description', 'og:url', 'og:image', 'og:site_name']) {
+      expect(html, `missing ${tag}`).toContain(`property="${tag}"`)
+    }
+
+    for (const tag of ['twitter:card', 'twitter:title', 'twitter:description', 'twitter:image']) {
+      expect(html, `missing ${tag}`).toContain(`name="${tag}"`)
+    }
+
+    // The Open Graph title has to be the page's, or the preview says "PdfWerk" for all ten.
+    const ogTitle = html.match(/property="og:title" content="([^"]+)"/)?.[1]
+    expect(ogTitle).toContain('Merge')
+  })
+
+  test('the preview image exists and is the size every scraper crops to', async ({ request }) => {
+    const response = await request.get('/og.png')
+
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toContain('image/png')
+
+    // PNG header: an 8-byte signature, then IHDR carrying width and height as big-endian ints.
+    const bytes = Buffer.from(await response.body())
+    expect(bytes.subarray(1, 4).toString('ascii')).toBe('PNG')
+
+    expect(bytes.readUInt32BE(16)).toBe(1200)
+    expect(bytes.readUInt32BE(20)).toBe(630)
+  })
+
+  test('structured data is valid JSON and describes the page', async ({ request }) => {
+    const html = await (await request.get('/forms')).text()
+    const block = html.match(/<script type="application\/ld\+json">(.+?)<\/script>/s)?.[1]
+
+    expect(block, 'no structured data').toBeTruthy()
+
+    // Malformed JSON-LD is silently ignored by every consumer, so it fails without telling you.
+    const data = JSON.parse(block!)
+
+    expect(data['@context']).toBe('https://schema.org')
+    expect(data['@type']).toBeTruthy()
+    expect(data.url).toContain('/forms')
+  })
+
+  test('robots.txt points at the sitemap and keeps crawlers out of the API', async ({ request }) => {
+    const response = await request.get('/robots.txt')
+
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toContain('text/plain')
+
+    const body = await response.text()
+
+    expect(body).toContain('User-agent: *')
+    expect(body).toMatch(/Sitemap: https?:\/\/\S+\/sitemap\.xml/)
+
+    // Crawling the operation endpoints would spend a caller's quota and index a stream of bytes.
+    expect(body).toContain('Disallow: /v1/')
+  })
+
+  test('the sitemap is well formed and lists every page', async ({ request }) => {
+    const response = await request.get('/sitemap.xml')
+
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toContain('xml')
+
+    const body = await response.text()
+
+    expect(body.startsWith('<?xml version="1.0" encoding="utf-8"?>')).toBe(true)
+    expect(body).toContain('http://www.sitemaps.org/schemas/sitemap/0.9')
+
+    // Generated from the same catalogue the pages use, so this also proves the two agree — a
+    // sitemap maintained by hand drifts the first time a route is added.
+    const locations = [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+    expect(locations).toHaveLength(ROUTES.length)
+
+    for (const route of ROUTES) {
+      expect(locations.some((l) => l.endsWith(route === '/' ? '/' : route)), `${route} missing`).toBe(true)
+    }
+  })
+
+  test('a page without content asks not to be indexed', async ({ request }) => {
+    const response = await request.get('/this-route-does-not-exist')
+
+    // The router will redirect a visitor home, but a crawler should not bank the URL first.
+    expect(response.headers()['x-robots-tag']).toBe('noindex')
+  })
+
+  test('the crawlable summary is a precis of the page, not a keyword list', async ({ request }) => {
+    const html = await (await request.get('/edit')).text()
+    const body = html.slice(html.indexOf('<body>'))
+
+    // Without JavaScript the container would otherwise be empty. What replaces it is the page's
+    // own heading and introduction, plus links onward — nothing the rendered page does not say.
+    expect(body).toContain('<h1>Update text in a PDF</h1>')
+    expect(body).toContain('white box')
+    expect(body).toContain('href="/merge"')
+  })
+})

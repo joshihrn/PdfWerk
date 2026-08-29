@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-151 Playwright tests against a real running instance — 36 driving the HTTP API directly and 115
+164 Playwright tests against a real running instance — 45 driving the HTTP API directly and 119
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -231,6 +231,36 @@ problem rather than ours.
 
 Stories cover the primitives only. The views that compose them are covered end to end by
 Playwright against a real API, which proves more than a mocked view in Storybook would.
+
+## Search visibility
+
+The UI renders in the browser, which means a crawler that does not run JavaScript sees an empty
+container and one title shared by all ten routes. Google executes JavaScript; Bing is uneven at
+it, and no social scraper does — so a link to `/merge` posted anywhere would have previewed as
+the generic site description.
+
+So the shell is rewritten per route before it is served: title, description, canonical, Open
+Graph, Twitter card and a schema.org block, plus a short crawlable summary carrying the page's
+own heading, its own introduction, and links to the other tools. That summary is a faithful
+precis of the page rather than extra keywords, and Vue discards it the moment it mounts.
+
+`robots.txt` and `sitemap.xml` are generated from the same catalogue the pages use, so a new
+route cannot appear without the sitemap knowing about it. The API is disallowed: crawling the
+operation endpoints would spend a caller's quota and index a stream of bytes.
+
+Page metadata lives in one file, [`web/public/seo.json`](web/public/seo.json). The build copies
+it into `wwwroot` for the server and bundles it into the app for client-side navigation, so both
+answer from the same source. A test asserts the two agree on every title.
+
+Set the canonical origin with `Seo:BaseUrl` (default `https://pdfwerk.com`). The browser derives
+its own canonical from the live origin instead, so a staging deployment does not claim
+production URLs as its own.
+
+The Open Graph card is regenerated with:
+
+```bash
+node web/tools/make-og-image.mjs
+```
 
 ## Deploying
 

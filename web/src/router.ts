@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { applyRouteMetadata } from './seo'
 
 /**
  * Views are lazily loaded so the landing page — the only one most visitors see — does not carry
@@ -23,3 +24,7 @@ export const router = createRouter({
   routes,
   scrollBehavior: () => ({ top: 0 }),
 })
+
+// After the navigation, not before: a title that changes while the old page is still on screen
+// describes something the reader is not looking at yet.
+router.afterEach((to) => applyRouteMetadata(to.path))

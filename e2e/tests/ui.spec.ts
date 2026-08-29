@@ -1586,3 +1586,59 @@ test.describe('api key lifecycle in the browser', () => {
     await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 })
+
+test.describe('metadata during navigation', () => {
+  test('the title follows the route', async ({ page }) => {
+    await page.goto('/')
+    const landing = await page.title()
+
+    await page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Merge', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Merge PDFs', level: 1 })).toBeVisible()
+
+    // A single-page app changes route without a request, so nothing updates the title unless the
+    // router is asked to. Bookmarks, history and shared links all read from it.
+    const merge = await page.title()
+
+    expect(merge).not.toBe(landing)
+    expect(merge).toContain('Merge')
+  })
+
+  test('the description and canonical follow the route too', async ({ page }) => {
+    await page.goto('/create')
+    await page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Inspect', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Inspect a PDF', level: 1 })).toBeVisible()
+
+    const meta = await page.evaluate(() => ({
+      description: document.querySelector('meta[name="description"]')?.getAttribute('content'),
+      canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href'),
+    }))
+
+    expect(meta.description).toContain('page count')
+    expect(meta.canonical).toContain('/inspect')
+  })
+
+  test('canonical points at the origin actually being served, not the configured one', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Pages', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Page tools', level: 1 })).toBeVisible()
+
+    const canonical = await page.getAttribute('link[rel="canonical"]', 'href')
+
+    // Otherwise a staging deployment would announce production URLs as its own, and ask search
+    // engines to index the wrong host.
+    expect(canonical).toContain(new URL(page.url()).origin)
+  })
+
+  test('the client and the server agree on every page title', async ({ page, request }) => {
+    for (const route of ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']) {
+      const served = (await (await request.get(route)).text()).match(/<title>([^<]+)<\/title>/)?.[1]
+
+      await page.goto(route)
+      const shown = await page.title()
+
+      // The two read from one file for exactly this reason. If they ever stop matching, the
+      // duplication has crept back in and one of them is lying to somebody.
+      expect(shown, `${route}: client and server titles differ`).toBe(served)
+    }
+  })
+})

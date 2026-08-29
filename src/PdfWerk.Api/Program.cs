@@ -97,6 +97,27 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(form 
     form.MultipartHeadersLengthLimit = 32 * 1024;
 });
 
+// Page metadata, shared with the web app through the file the build copies into wwwroot. Absent
+// when the API runs without the UI built alongside it, in which case the SEO routes stay off.
+builder.Services.AddSingleton(provider =>
+{
+    var environment = provider.GetRequiredService<IWebHostEnvironment>();
+    var configuration = provider.GetRequiredService<IConfiguration>();
+
+    var baseUrl = configuration["Seo:BaseUrl"] ?? "https://pdfwerk.com";
+    var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+
+    return SeoCatalogue.Load(root, baseUrl)!;
+});
+
+builder.Services.AddSingleton(provider =>
+{
+    var environment = provider.GetRequiredService<IWebHostEnvironment>();
+    var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+
+    return new SeoShell(provider.GetRequiredService<SeoCatalogue>(), Path.Combine(root, "index.html"));
+});
+
 var app = builder.Build();
 
 // ---- pipeline -----------------------------------------------------------
@@ -116,8 +137,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "pdfwerk" 
    .ExcludeFromDescription();
 
 // The UI is a single-page app, so a deep link like /forms has no file behind it. Anything that
-// is not an API route or a real asset is handed to index.html for the router to resolve.
-app.MapFallbackToFile("index.html");
+// is not an API route or a real asset is handed the shell for the router to resolve — with that
+// page's own metadata written into it, since crawlers and link previews do not run the app.
+app.MapSeoEndpoints();
 
 await InfrastructureServiceCollectionExtensions.InitialiseStorageAsync(app.Services);
 

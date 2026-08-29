@@ -1,0 +1,88 @@
+{
+  "$comment": "The single source of truth for page metadata. Imported by the Vue app so it can update the title on client-side navigation, and read by the API so it can inject the same values into the HTML it serves — crawlers and social scrapers that do not execute JavaScript would otherwise see one generic title for all ten pages. It lives in public/ so the build copies it verbatim into wwwroot where the server can find it, and is imported from source as well so the client pays no fetch for it.",
+  "siteName": "PdfWerk",
+  "twitter": "@pdfwerk",
+  "defaultImage": "/og.png",
+  "routes": [
+    {
+      "path": "/",
+      "title": "PdfWerk — PDF operations as an HTTP API",
+      "description": "Create, edit, merge, split, watermark, protect and summarise PDFs over a plain HTTP API, with a web interface and embeddable widgets on top. Source-available and free to self-host.",
+      "heading": "PDF operations as an HTTP API",
+      "intro": "Eleven PDF operations, each one an HTTP endpoint with a matching page in the browser. Per-action rate limits, a free key that takes one request, and a drop-in widget for embedding any of it in your own application.",
+      "type": "website"
+    },
+    {
+      "path": "/create",
+      "title": "Create a PDF from text or Markdown — free online",
+      "description": "Turn plain text or Markdown into a paginated PDF in your browser. Choose page size, orientation, margins and page numbering. No signup, no watermark on the output.",
+      "heading": "Create a PDF from text",
+      "intro": "Paste or type your content, pick a page size, and get a proper paginated document back. Markdown headings, lists, emphasis and code blocks are laid out for print rather than for a screen.",
+      "type": "webapp"
+    },
+    {
+      "path": "/word",
+      "title": "Convert Word to PDF — free, no signup",
+      "description": "Convert a .docx or .doc file to PDF in your browser. Layout, headings and page breaks are preserved. Nothing is stored after the conversion finishes.",
+      "heading": "Word to PDF",
+      "intro": "Upload a Word document and get a PDF back. Where LibreOffice is available the conversion is faithful to the original layout; otherwise a managed converter handles the common cases without it.",
+      "type": "webapp"
+    },
+    {
+      "path": "/edit",
+      "title": "Edit text in a PDF — find and replace online",
+      "description": "Find and replace text inside an existing PDF. The original words are removed from the file rather than covered over, so they disappear from search and copy-paste too.",
+      "heading": "Update text in a PDF",
+      "intro": "Search for a phrase and replace it throughout the document. Unlike tools that paint a white box over the old text, this rewrites the content stream — so the words you replaced cannot be recovered by selecting or searching the file.",
+      "type": "webapp"
+    },
+    {
+      "path": "/forms",
+      "title": "Add form fields to a PDF — fill and flatten online",
+      "description": "Add, move and remove AcroForm fields on a PDF by clicking the page, then fill them with values or flatten them into the document. Text, checkbox, dropdown, radio and signature fields.",
+      "heading": "Form fields",
+      "intro": "Click where a field belongs and it is placed at those exact coordinates in PDF points. Fill the fields with values afterwards, and flatten them when you want the values baked in and the form gone.",
+      "type": "webapp"
+    },
+    {
+      "path": "/merge",
+      "title": "Merge PDF files — combine documents online",
+      "description": "Combine several PDFs into one, in the order you choose. Reorder the list before merging, and download the result immediately. No signup and no watermark.",
+      "heading": "Merge PDFs",
+      "intro": "Add two or more documents, drag them into the order you want, and get a single PDF back. Bookmarks and page sizes from each source are carried through.",
+      "type": "webapp"
+    },
+    {
+      "path": "/pages",
+      "title": "Split, rotate, watermark and password-protect a PDF",
+      "description": "Extract page ranges, burst a document into single pages, rotate selected pages, stamp a watermark, or encrypt a PDF with a password and permissions.",
+      "heading": "Page tools",
+      "intro": "Four operations on the pages themselves. Ranges understand 1-3, odd, even and open-ended tails, so you can take exactly the pages you mean without counting twice.",
+      "type": "webapp"
+    },
+    {
+      "path": "/summarize",
+      "title": "Summarise a PDF with AI — free online",
+      "description": "Extract the text of a PDF and get an AI summary with key points. Works with Gemini, Groq or a local Ollama model, and long documents are summarised in parts and merged.",
+      "heading": "Summarise a PDF",
+      "intro": "The document's text is extracted and sent to a language model. Anything longer than the model's context is split, summarised piecewise and merged, so a two-hundred-page report is handled the same way as a two-page one.",
+      "type": "webapp"
+    },
+    {
+      "path": "/inspect",
+      "title": "Inspect a PDF — page count, metadata and form fields",
+      "description": "Read a PDF's structure without changing it: page count, page dimensions, title and author, whether it is encrypted, and every form field it contains.",
+      "heading": "Inspect a PDF",
+      "intro": "Upload a document to see what is actually inside it — how many pages, what size they are, what metadata it carries, and the name, type and position of every form field.",
+      "type": "webapp"
+    },
+    {
+      "path": "/api",
+      "title": "PDF API access and rate limits — PdfWerk",
+      "description": "Get a free API key in one request. Per-action rate limits, quota headers on every response, and a documented HTTP endpoint behind each tool on the site.",
+      "heading": "API access",
+      "intro": "Every tool here is one HTTP call. A free key raises your limits and takes a single request — no account and no email. Each response carries the remaining quota, so you can pace requests instead of discovering the ceiling by being refused.",
+      "type": "website"
+    }
+  ]
+}

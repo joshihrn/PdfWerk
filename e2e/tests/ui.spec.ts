@@ -2,10 +2,12 @@ import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   apiKey,
+  authHeaders,
   configuredProviders,
   makeDocx,
   makeFormPdf,
   makePdf,
+  pdfPart,
   sharedPdf,
   signIn,
 } from './support'
@@ -1165,4 +1167,110 @@ test.describe('small screens', () => {
       page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Create', exact: true }),
     ).toBeVisible()
   })
+})
+
+test.describe('hostile content from a document', () => {
+  /**
+   * Anything read out of an uploaded PDF is attacker-controlled: a title, a field name, an
+   * author. It is rendered back into the interface, so it has to be treated as text and never
+   * as markup, however it got there.
+   */
+  // Deliberately free of full stops: '.' separates AcroForm hierarchy levels, so a payload
+  // containing one is refused for that reason and never reaches the rendering path under test.
+  // The handler assigns an implicit global for the same reason.
+  const payload = '<img src=x onerror="xssFired=1">'
+
+  test('a field name from a document is rendered as text, not markup', async ({ page, request }) => {
+    const key = await apiKey(request)
+
+    const designed = await request.post('/v1/forms/design?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(await sharedPdf(request)),
+        request: JSON.stringify({
+          add: [{ name: payload, type: 'Text', rect: { page: 1, x: 72, y: 300, width: 200, height: 20 } }],
+        }),
+      },
+    })
+
+    // Asserted rather than skipped past. A conditional skip here would pass silently whenever the
+    // request failed for any other reason — a rate limit, say — and quietly test nothing. The
+    // service does accept this name, so the escaping below is the defence that actually matters.
+    expect(designed.ok(), await designed.text()).toBeTruthy()
+
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'hostile.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await designed.body()),
+    })
+
+    await page.getByRole('tab', { name: 'Fill values' }).click()
+    await expect(page.getByText(payload, { exact: false }).first()).toBeVisible({ timeout: 30_000 })
+
+    expect(await page.evaluate(() => (window as { xssFired?: number }).xssFired)).toBeUndefined()
+    expect(await page.locator('img[src="x"]').count()).toBe(0)
+  })
+
+  test('a document title from metadata is rendered as text', async ({ page, request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'Body text.', payload)
+
+    await page.goto('/inspect')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'hostile.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await page.getByRole('button', { name: 'Inspect' }).click()
+    await expect(page.getByText(payload, { exact: false }).first()).toBeVisible({ timeout: 30_000 })
+
+    expect(await page.evaluate(() => (window as { xssFired?: number }).xssFired)).toBeUndefined()
+    expect(await page.locator('img[src="x"]').count()).toBe(0)
+  })
+
+  test('an error message from the server is rendered as text', async ({ page, request }) => {
+    await page.route('**/v1/inspect*', (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'bad_request', message: payload }),
+      }),
+    )
+
+    await page.goto('/inspect')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: await sharedPdf(request),
+    })
+
+    await page.getByRole('button', { name: 'Inspect' }).click()
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+
+    expect(await page.evaluate(() => (window as { xssFired?: number }).xssFired)).toBeUndefined()
+  })
+})
+
+test.describe('console hygiene', () => {
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api']
+
+  for (const path of pages) {
+    test(`${path} loads without console errors`, async ({ page }) => {
+      const problems: string[] = []
+
+      page.on('console', (message) => {
+        if (message.type() === 'error') problems.push(message.text())
+      })
+      page.on('pageerror', (error) => problems.push(`uncaught: ${error.message}`))
+
+      await page.goto(path)
+      await page.waitForLoadState('networkidle')
+
+      // A page that logs errors on load is either doing something it should not or telling the
+      // truth about a bug. Neither belongs in a release.
+      expect(problems, `console errors on ${path}`).toEqual([])
+    })
+  }
 })

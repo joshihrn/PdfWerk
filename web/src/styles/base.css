@@ -1,0 +1,279 @@
+/*
+ * Base layer: reset, document defaults, and the primitives every view leans on.
+ * Component-specific styling lives with its component; this file stays generic.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--t-14);
+  line-height: var(--lh-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Tabular figures everywhere: this UI is full of counts, sizes, quotas and page
+     numbers, and proportional digits make columns of them jitter. */
+  font-variant-numeric: tabular-nums;
+}
+
+img,
+svg,
+canvas,
+iframe {
+  display: block;
+  max-width: 100%;
+}
+
+/* ---- type ------------------------------------------------------------- */
+
+h1, h2, h3, h4 {
+  font-weight: var(--w-semi);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--t-24); }
+h2 { font-size: var(--t-20); }
+h3 { font-size: var(--t-14); }
+h4 { font-size: var(--t-13); }
+
+p {
+  text-wrap: pretty;
+  max-width: 72ch;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover { text-decoration: underline; }
+
+code, pre, kbd, samp {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  font-variant-ligatures: none;
+}
+
+code {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4);
+  overflow-x: auto;
+  font-size: var(--t-12);
+  line-height: 1.6;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ---- focus ------------------------------------------------------------
+   One visible ring, applied only for keyboard interaction. A focus style that
+   also fires on mouse clicks gets designed away, and then keyboard users lose it. */
+
+:focus { outline: none; }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: var(--a-100);
+  color: var(--n-900);
+}
+
+:root[data-theme='dark'] ::selection {
+  background: var(--a-700);
+  color: #fff;
+}
+
+/* ---- utilities -------------------------------------------------------- */
+
+.muted   { color: var(--fg-muted); }
+.subtle  { color: var(--fg-subtle); }
+.mono    { font-family: var(--mono); }
+.t-12    { font-size: var(--t-12); }
+.t-13    { font-size: var(--t-13); }
+.nowrap  { white-space: nowrap; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.stack   { display: flex; flex-direction: column; gap: var(--s-3); }
+.stack-4 { display: flex; flex-direction: column; gap: var(--s-4); }
+.stack-6 { display: flex; flex-direction: column; gap: var(--s-6); }
+.row     { display: flex; align-items: center; gap: var(--s-2); }
+.row-3   { display: flex; align-items: center; gap: var(--s-3); }
+.wrap    { flex-wrap: wrap; }
+.grow    { flex: 1 1 auto; min-width: 0; }
+.right   { margin-left: auto; }
+
+/* Screen-reader-only, still focusable — used by the skip link. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-4);
+  top: var(--s-4);
+  z-index: 100;
+  padding: var(--s-2) var(--s-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+  transition: transform var(--fast) var(--ease);
+}
+
+.skip-link:focus-visible { transform: translateY(0); }
+
+/* ---- scrollbars ------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid var(--bg);
+  border-radius: var(--r-full);
+}
+
+/* ---- reduced motion ---------------------------------------------------
+   Honoured properly: near-zero rather than zero, so transitionend still fires
+   and nothing that waits on it hangs. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- print -------------------------------------------------------------
+   People print API reference pages far more often than designers expect. */
+
+@media print {
+  body { background: #fff; color: #000; }
+  .app-nav, .app-footer, .no-print { display: none !important; }
+}
+
+/* ---- layout ------------------------------------------------------------
+   A working tool is two columns: what you configure, and what came back.
+   Below 960px they stack, because a preview squeezed into half a phone is useless. */
+
+.split {
+  display: grid;
+  gap: var(--s-5);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  align-items: start;
+}
+
+.split--even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+@media (max-width: 960px) {
+  .split,
+  .split--even { grid-template-columns: minmax(0, 1fr); }
+}
+
+.grid {
+  display: grid;
+  gap: var(--s-4);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.cols-2 { display: grid; gap: var(--s-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { display: grid; gap: var(--s-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (max-width: 560px) {
+  .cols-2, .cols-3 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---- table -------------------------------------------------------------
+   Dense by default. These hold quotas, field inventories and page dimensions —
+   things people scan and compare, where rows-per-screen is the whole point. */
+
+.table { width: 100%; border-collapse: collapse; font-size: var(--t-13); }
+
+.table th {
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-11);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-subtle);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: var(--bg-sunken); }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+
+/* ---- theme switching ---------------------------------------------------
+   Every surface, border and text colour is token-driven, so flipping the theme would
+   otherwise animate all of them at once. The result looks like a rendering fault rather
+   than a transition, so transitions are suppressed for the duration of the swap. */
+
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}

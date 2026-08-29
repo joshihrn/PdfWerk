@@ -176,23 +176,28 @@ az webapp restart -g rg_pdfwerk -n pdfwerk-api
 | TXT | `@` | `brevo-code:f24c4a81e37ade215b9b0f119ae73bd0` | Brevo ownership |
 | CNAME | `brevo1._domainkey` | `b1.pdfwerk-com.dkim.brevo.com` | DKIM |
 | CNAME | `brevo2._domainkey` | `b2.pdfwerk-com.dkim.brevo.com` | DKIM |
-| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` | DMARC |
+| TXT | `_dmarc` | `v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;` | DMARC |
+| TXT | `@` | `v=spf1 include:spf.protection.outlook.com include:spf.brevo.com include:spf.em.secureserver.net ~all` | SPF, one record for all three senders |
+| MX | `@` | `pdfwerk-com.mail.protection.outlook.com` (priority 0) | Mail to `support@pdfwerk.com` |
+| CNAME | `autodiscover` | `autodiscover.outlook.com` | Outlook client setup |
 
-Live as of the deployment: the A record, `asuid`, `MS=ms34650661` and the Brevo code are all in
-place and resolving. Still outstanding are the two Brevo DKIM CNAMEs, which only affect whether
-Brevo may send as this domain.
+Every row above is live and resolving, at the authoritative nameservers and at public resolvers.
 
-Two records were already there and matter:
+Three of these were not simple additions, and the reasoning matters if they are ever revisited:
 
-- **SPF** is `v=spf1 include:spf.em.secureserver.net ?all`. A domain may have only one SPF record,
-  so adding Microsoft's is a **merge**, not a second record:
-  `v=spf1 include:spf.protection.outlook.com include:spf.em.secureserver.net ~all`
-- **DMARC** already exists at `p=quarantine` pointing at GoDaddy's reporting address. Brevo's
-  suggested record was deliberately *not* added — two DMARC records are invalid, and the existing
-  one is stricter than Brevo's `p=none`. It will pass once the DKIM CNAMEs are in.
+- **SPF is merged, never duplicated.** A domain may have only one SPF record; a second one makes
+  the whole check fail rather than combining. Microsoft asks for `-all`, but a hard fail would
+  reject anything sent through Brevo or GoDaddy the moment a lookup lagged, so the merged record
+  ends `~all`. Three `include:` lookups is well inside SPF's limit of ten.
+- **DMARC is GoDaddy's, left alone.** Two DMARC records are invalid, and the existing one is at
+  `p=quarantine` — stricter than the `p=none` Brevo suggests. Its `rua` still reports to GoDaddy;
+  worth repointing eventually, but it changes enforcement not at all.
+- **MX was replaced, in that order.** Microsoft's MX went in first and GoDaddy's two came out
+  afterwards, so there was never a window with no mail route. Had they been left alongside,
+  priority 0 would have been a coin toss between Microsoft and GoDaddy's parking.
 
-The MX records pointing at `smtp.secureserver.net` must be **replaced** with Microsoft's, or mail
-to `support@pdfwerk.com` goes to GoDaddy's parking rather than the mailbox.
+`support@pdfwerk.com` is an alias on the `Hiren.Joshi@manibaa.com` mailbox rather than a licensed
+user of its own, which is why it costs nothing.
 
 An A record rather than a CNAME because GoDaddy cannot put a CNAME at the apex. The address is
 stable for the life of the app, but it is not reserved — deleting and recreating the app gets a

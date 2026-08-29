@@ -152,7 +152,7 @@ Running on Azure App Service for Containers in `westus2`, in resource group `rg_
 | --- | --- | --- |
 | Container registry | `pdfwerkacr` | Basic. Pulled by managed identity, so no registry password is stored anywhere. |
 | App Service plan | `asp-pdfwerk` | Linux B1, pinned to **one instance**. |
-| Web app | `pdfwerk-api` | https://pdfwerk-api.azurewebsites.net |
+| Web app | `pdfwerk-api` | https://pdfwerk.com, with a free App Service managed certificate |
 | Database | `pdfwerk` on `vm-sql-quintara` | Shares the Postgres server Quitara already pays for. |
 
 One instance is deliberate, not incidental. The rate limiter counts in-process without Redis, so a
@@ -178,8 +178,21 @@ az webapp restart -g rg_pdfwerk -n pdfwerk-api
 | CNAME | `brevo2._domainkey` | `b2.pdfwerk-com.dkim.brevo.com` | DKIM |
 | TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` | DMARC |
 
-The existing MX records pointing at `smtp.secureserver.net` must be **replaced** with Microsoft's,
-or mail to `support@pdfwerk.com` goes to GoDaddy's parking rather than the mailbox.
+Live as of the deployment: the A record, `asuid`, `MS=ms34650661` and the Brevo code are all in
+place and resolving. Still outstanding are the two Brevo DKIM CNAMEs, which only affect whether
+Brevo may send as this domain.
+
+Two records were already there and matter:
+
+- **SPF** is `v=spf1 include:spf.em.secureserver.net ?all`. A domain may have only one SPF record,
+  so adding Microsoft's is a **merge**, not a second record:
+  `v=spf1 include:spf.protection.outlook.com include:spf.em.secureserver.net ~all`
+- **DMARC** already exists at `p=quarantine` pointing at GoDaddy's reporting address. Brevo's
+  suggested record was deliberately *not* added — two DMARC records are invalid, and the existing
+  one is stricter than Brevo's `p=none`. It will pass once the DKIM CNAMEs are in.
+
+The MX records pointing at `smtp.secureserver.net` must be **replaced** with Microsoft's, or mail
+to `support@pdfwerk.com` goes to GoDaddy's parking rather than the mailbox.
 
 An A record rather than a CNAME because GoDaddy cannot put a CNAME at the apex. The address is
 stable for the life of the app, but it is not reserved — deleting and recreating the app gets a

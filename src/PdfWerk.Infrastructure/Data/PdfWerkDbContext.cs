@@ -31,6 +31,12 @@ public sealed class ApiKeyEntity
     public DateTimeOffset? LastUsedAt { get; set; }
 
     public long TotalCalls { get; set; }
+
+    /// <summary>
+    /// Grants access to the admin API. Separate from the tier on purpose: a tier says how much
+    /// quota a caller gets, which is a different question from what they are allowed to see.
+    /// </summary>
+    public bool IsAdmin { get; set; }
 }
 
 /// <summary>One recorded call, for usage history and abuse investigation.</summary>
@@ -62,6 +68,12 @@ public sealed class PdfWerkDbContext(DbContextOptions<PdfWerkDbContext> options)
 
     public DbSet<UsageEntity> Usage => Set<UsageEntity>();
 
+    public DbSet<RequestLogEntity> RequestLog => Set<RequestLogEntity>();
+
+    public DbSet<IpBlockEntity> IpBlocks => Set<IpBlockEntity>();
+
+    public DbSet<RateLimitOverrideEntity> RateLimitOverrides => Set<RateLimitOverrideEntity>();
+
     protected override void OnModelCreating(ModelBuilder model)
     {
         model.Entity<ApiKeyEntity>(key =>
@@ -87,6 +99,49 @@ public sealed class PdfWerkDbContext(DbContextOptions<PdfWerkDbContext> options)
             // Supports both "what has this caller been doing" and time-bounded pruning.
             usage.HasIndex(u => new { u.ClientId, u.At });
             usage.HasIndex(u => u.At);
+        });
+
+        model.Entity<RequestLogEntity>(log =>
+        {
+            log.HasKey(l => l.Id);
+
+            log.Property(l => l.Address).HasMaxLength(45).IsRequired();   // an IPv6 literal fits in 45
+            log.Property(l => l.Method).HasMaxLength(10).IsRequired();
+            log.Property(l => l.Path).HasMaxLength(512).IsRequired();
+            log.Property(l => l.ClientId).HasMaxLength(80).IsRequired();
+            log.Property(l => l.UserAgent).HasMaxLength(512);
+            log.Property(l => l.Action).HasConversion<string?>().HasMaxLength(30);
+
+            // The admin view is always "most recent first", and pruning walks the same order.
+            log.HasIndex(l => l.At);
+
+            // "What has this address been doing" is the question the log exists to answer.
+            log.HasIndex(l => new { l.Address, l.At });
+        });
+
+        model.Entity<IpBlockEntity>(block =>
+        {
+            block.HasKey(b => b.Id);
+
+            block.Property(b => b.Cidr).HasMaxLength(64).IsRequired();
+            block.Property(b => b.Network).HasMaxLength(45).IsRequired();
+            block.Property(b => b.Reason).HasMaxLength(300).IsRequired();
+            block.Property(b => b.CreatedBy).HasMaxLength(80).IsRequired();
+
+            // The same range must not be listed twice, or unblocking it once would not unblock it.
+            block.HasIndex(b => new { b.Network, b.PrefixLength }).IsUnique();
+        });
+
+        model.Entity<RateLimitOverrideEntity>(rate =>
+        {
+            rate.HasKey(r => r.Id);
+
+            rate.Property(r => r.Tier).HasMaxLength(20).IsRequired();
+            rate.Property(r => r.Action).HasMaxLength(30).IsRequired();
+            rate.Property(r => r.UpdatedBy).HasMaxLength(80).IsRequired();
+
+            // One override per tier and action; saving again replaces rather than accumulates.
+            rate.HasIndex(r => new { r.Tier, r.Action }).IsUnique();
         });
     }
 }

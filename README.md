@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-203 Playwright tests against a real running instance — 57 driving the HTTP API directly and 146
+219 Playwright tests against a real running instance — 64 driving the HTTP API directly and 155
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -320,6 +320,39 @@ at all, which is the sensible default for a self-hosted copy.
 
 The measurement ID is written into the served HTML by the server, not baked into the bundle, so a
 self-hosted instance reports to its own property without a rebuild.
+
+## Contact form
+
+A form at `/contact` that emails whoever runs the instance, delivered through
+[Brevo](https://www.brevo.com)'s transactional API. Configure it with:
+
+```json
+"Contact": {
+  "ApiKey": "your-brevo-api-key",
+  "To": "you@example.com",
+  "From": "support@pdfwerk.com",
+  "FromName": "PdfWerk",
+  "SiteName": "pdfwerk.com"
+}
+```
+
+`From` must be a sender Brevo has **verified for your account**, or every send is refused — it
+looks like free text and is not. Leave `ApiKey` empty and the page says so up front and points at
+GitHub issues instead, rather than presenting a form that goes nowhere.
+
+Two things protect it, because a public form that sends mail through a sender address you own is
+the most attractive thing here to abuse:
+
+- **A honeypot field**, hidden off-screen and out of the tab order. A filled one is answered with
+  a cheerful "sent" and discarded — a bot told it was caught simply retries.
+- **Rate limiting**, through the same per-action limiter as everything else: 5 a minute and 10 an
+  hour, at every tier, editable from the admin portal. The hourly figure does the real work; the
+  per-minute one only needs to stop a burst, and is loose enough that correcting a typo never
+  trips it.
+
+The visitor's address goes in `Reply-To` and never in `From`. Sending as the visitor would mean
+sending from a domain you are not authorised for, which fails SPF and teaches receiving servers
+that your real mail is worth distrusting too.
 
 ## Deploying
 

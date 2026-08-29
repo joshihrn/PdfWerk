@@ -101,6 +101,14 @@
       "type": "website"
     },
     {
+      "path": "/contact",
+      "title": "Contact PdfWerk",
+      "description": "Questions about the PDF API, a bug report, or a licensing conversation. Messages reach whoever runs this instance; technical issues are better raised on GitHub.",
+      "heading": "Get in touch",
+      "intro": "Questions about the API, a bug, a licensing conversation, or something that should work and does not.",
+      "type": "website"
+    },
+    {
       "path": "/admin",
       "title": "Administration \u2014 PdfWerk",
       "description": "Administrative access to the request log, blocked addresses and rate limits. Requires an administrator key.",

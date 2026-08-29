@@ -41,6 +41,18 @@ public enum PdfWerkAction
 
     /// <summary>Apply a password and permission flags.</summary>
     Protect,
+
+    /// <summary>
+    /// Send a message from the contact form.
+    /// </summary>
+    /// <remarks>
+    /// Not a document operation, and deliberately absent from <see cref="ActionCatalog"/> so it
+    /// stays off the landing page and out of the API documentation. It is here because being an
+    /// action is what gives it per-caller rate limits, quota headers and an editable ceiling in
+    /// the admin portal — and a public form that sends email is the single most attractive thing
+    /// on this service to abuse.
+    /// </remarks>
+    Contact,
 }
 
 /// <summary>Human-facing metadata for an action, surfaced on the landing page and in the API docs.</summary>

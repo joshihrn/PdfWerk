@@ -110,6 +110,20 @@ public sealed class RateLimitOptions
             },
             Actions =
             {
+                // Far tighter than anything else, but not so tight that a person cannot correct a
+                // mistake. The counter is spent before the handler runs, so a mistyped address or
+                // a message a few characters short costs a send — three an hour would lock someone
+                // out for fixing a typo twice. The hourly figure does the real work — ten an hour
+                // is nothing to a spammer — so the per-minute one only needs to stop a tight
+                // burst, and can be loose enough that correcting a mistake never trips it.
+                //
+                // The same ceiling applies at every tier: a paid key is not a reason to send more
+                // email to us.
+                [nameof(PdfWerkAction.Contact)] = new ActionLimit
+                {
+                    PerMinute = 5, PerHour = 10, PerDay = 20, Concurrent = 1,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 4_000,
+                },
                 [nameof(PdfWerkAction.Summarize)] = new ActionLimit
                 {
                     PerMinute = 2, PerHour = 8, PerDay = 20, Concurrent = 1,
@@ -137,6 +151,20 @@ public sealed class RateLimitOptions
             },
             Actions =
             {
+                // Far tighter than anything else, but not so tight that a person cannot correct a
+                // mistake. The counter is spent before the handler runs, so a mistyped address or
+                // a message a few characters short costs a send — three an hour would lock someone
+                // out for fixing a typo twice. The hourly figure does the real work — ten an hour
+                // is nothing to a spammer — so the per-minute one only needs to stop a tight
+                // burst, and can be loose enough that correcting a mistake never trips it.
+                //
+                // The same ceiling applies at every tier: a paid key is not a reason to send more
+                // email to us.
+                [nameof(PdfWerkAction.Contact)] = new ActionLimit
+                {
+                    PerMinute = 5, PerHour = 10, PerDay = 20, Concurrent = 1,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 4_000,
+                },
                 [nameof(PdfWerkAction.Summarize)] = new ActionLimit
                 {
                     PerMinute = 6, PerHour = 60, PerDay = 250, Concurrent = 2,
@@ -164,6 +192,20 @@ public sealed class RateLimitOptions
             },
             Actions =
             {
+                // Far tighter than anything else, but not so tight that a person cannot correct a
+                // mistake. The counter is spent before the handler runs, so a mistyped address or
+                // a message a few characters short costs a send — three an hour would lock someone
+                // out for fixing a typo twice. The hourly figure does the real work — ten an hour
+                // is nothing to a spammer — so the per-minute one only needs to stop a tight
+                // burst, and can be loose enough that correcting a mistake never trips it.
+                //
+                // The same ceiling applies at every tier: a paid key is not a reason to send more
+                // email to us.
+                [nameof(PdfWerkAction.Contact)] = new ActionLimit
+                {
+                    PerMinute = 5, PerHour = 10, PerDay = 20, Concurrent = 1,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 4_000,
+                },
                 [nameof(PdfWerkAction.Summarize)] = new ActionLimit
                 {
                     PerMinute = 30, PerHour = 600, PerDay = 5_000, Concurrent = 8,

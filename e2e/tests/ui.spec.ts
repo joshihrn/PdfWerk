@@ -763,7 +763,7 @@ test.describe('summarise', () => {
 })
 
 test.describe('accessibility audit', () => {
-  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
 
   for (const path of pages) {
     for (const theme of ['light', 'dark'] as const) {
@@ -1283,7 +1283,7 @@ test.describe('hostile content from a document', () => {
 })
 
 test.describe('console hygiene', () => {
-  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
+  const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
 
   for (const path of pages) {
     test(`${path} loads without console errors`, async ({ page }) => {
@@ -1630,7 +1630,7 @@ test.describe('metadata during navigation', () => {
   })
 
   test('the client and the server agree on every page title', async ({ page, request }) => {
-    for (const route of ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']) {
+    for (const route of ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']) {
       const served = (await (await request.get(route)).text()).match(/<title>([^<]+)<\/title>/)?.[1]
 
       await page.goto(route)
@@ -1948,5 +1948,100 @@ test.describe('brand and legal pages', () => {
     }
 
     expect(manifest.icons.some((i: { purpose?: string }) => i.purpose === 'maskable')).toBe(true)
+  })
+})
+
+test.describe('contact page', () => {
+  test('the footer reaches it', async ({ page }) => {
+    await page.goto('/')
+
+    await page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Contact' }).click()
+    await expect(page.getByRole('heading', { name: 'Get in touch', level: 1 })).toBeVisible()
+  })
+
+  test('sending is blocked until there is something to send', async ({ page }) => {
+    await page.goto('/contact')
+
+    const send = page.getByRole('button', { name: 'Send message' })
+    await expect(send).toBeDisabled()
+
+    await page.getByLabel('Your name').fill('Ada Lovelace')
+    await page.getByLabel('Your email').fill('ada@example.com')
+    await expect(send).toBeDisabled()
+
+    // Ten characters, matching the server. A form that lets you submit what the API will refuse
+    // wastes the visitor's time and one of their three messages an hour.
+    await page.getByLabel('Message').fill('too short')
+    await expect(send).toBeDisabled()
+
+    await page.getByLabel('Message').fill('A question about the form designer.')
+    await expect(send).toBeEnabled()
+  })
+
+  test('the honeypot is hidden from people and from assistive technology', async ({ page }) => {
+    await page.goto('/contact')
+
+    const trap = page.locator('#website')
+
+    await expect(trap).toHaveCount(1)
+    await expect(trap).not.toBeInViewport()
+
+    // Out of the tab order and inside an aria-hidden container, so nobody using a keyboard or a
+    // screen reader can fill it in by accident and have their message silently binned.
+    expect(await trap.getAttribute('tabindex')).toBe('-1')
+    expect(await page.locator('.trap').getAttribute('aria-hidden')).toBe('true')
+  })
+
+  test('a failure to send is reported rather than swallowed', async ({ page }) => {
+    await page.route('**/v1/contact', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+
+      return route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'bad_gateway', message: 'That message could not be sent just now.' }),
+      })
+    })
+
+    await page.goto('/contact')
+    await page.getByLabel('Your name').fill('Ada Lovelace')
+    await page.getByLabel('Your email').fill('ada@example.com')
+    await page.getByLabel('Message').fill('A question about the form designer.')
+    await page.getByRole('button', { name: 'Send message' }).click()
+
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+
+    // The typing must survive, or a transient failure costs the visitor everything they wrote.
+    await expect(page.getByLabel('Message')).toHaveValue(/form designer/)
+  })
+
+  test('a sent message is confirmed and the form is cleared', async ({ page }) => {
+    await page.route('**/v1/contact', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"sent":true}' })
+    })
+
+    await page.goto('/contact')
+    await page.getByLabel('Your name').fill('Ada Lovelace')
+    await page.getByLabel('Your email').fill('ada@example.com')
+    await page.getByLabel('Message').fill('A question about the form designer.')
+    await page.getByRole('button', { name: 'Send message' }).click()
+
+    await expect(page.getByText('Message sent')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0)
+  })
+
+  test('an instance that cannot send says so instead of showing a dead form', async ({ page }) => {
+    await page.route('**/v1/contact', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"configured":false}' })
+    })
+
+    await page.goto('/contact')
+
+    // Writing three paragraphs and only then discovering there is no mail provider is the worst
+    // possible way to find out, and it is the normal state for a self-hosted copy.
+    await expect(page.getByText('This instance cannot send mail')).toBeVisible()
+    await expect(page.getByLabel('Message')).toHaveCount(0)
   })
 })

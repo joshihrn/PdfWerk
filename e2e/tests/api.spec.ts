@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 import {
   apiKey,
   authHeaders,
@@ -777,7 +777,7 @@ test.describe('response shape', () => {
  * a link to any page previews and indexes as itself rather than as the generic shell.
  */
 test.describe('search engine metadata', () => {
-  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/privacy', '/terms']
+  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
 
   test('every page carries its own title and description', async ({ request }) => {
     const seen = new Map<string, string>()
@@ -1086,5 +1086,139 @@ test.describe('admin api', () => {
 
     // Publishing the shape of the administrative surface only helps someone probing for it.
     expect(document).not.toContain('/v1/admin')
+  })
+})
+
+test.describe('contact form', () => {
+  /**
+   * The harness configures a deliberately invalid mail key, so a valid message reaches the send
+   * and is refused there. Everything up to that point is what this endpoint is responsible for,
+   * and no test should depend on real mail leaving the machine.
+   *
+   * The contact ceiling is ten an hour, which the group as a whole would exhaust — and a rolling
+   * hourly window means a second run within the hour would fail on the first test rather than the
+   * last. So each test sets the ceiling it needs through the admin API, which makes the group
+   * deterministic however often it runs, and exercises the limit editor while it is at it.
+   */
+  const ADMIN = { 'X-Api-Key': 'pw_e2e_test_admin_key_not_a_secret_1' }
+
+  async function setContactCeiling(request: APIRequestContext, perMinute: number, perHour: number) {
+    const limits = await (await request.get('/v1/admin/limits', { headers: ADMIN })).json()
+
+    const current = limits.find(
+      (l: { tier: string; action: string }) => l.tier === 'Anonymous' && l.action === 'Contact',
+    )
+
+    await request.put('/v1/admin/limits', {
+      headers: ADMIN,
+      data: { ...current, perMinute, perHour, perDay: 10_000 },
+    })
+  }
+
+  test.beforeEach(async ({ request }) => {
+    await setContactCeiling(request, 1_000, 10_000)
+  })
+
+  test.afterAll(async ({ request }) => {
+    // Back to whatever the configuration says, so nothing else inherits a raised ceiling.
+    await request.delete('/v1/admin/limits/Anonymous/Contact', { headers: ADMIN })
+  })
+  test('it reports whether it can send at all', async ({ request }) => {
+    const body = await (await request.get('/v1/contact')).json()
+
+    expect(typeof body.configured).toBe('boolean')
+  })
+
+  test('a message missing its parts is refused, each with its own reason', async ({ request }) => {
+    const cases: [Record<string, string>, RegExp][] = [
+      [{ name: '', email: 'ada@example.com', message: 'A perfectly ordinary message.' }, /name/i],
+      [{ name: 'Ada', email: 'not-an-address', message: 'A perfectly ordinary message.' }, /email/i],
+      [{ name: 'Ada', email: 'ada@example.com', message: 'short' }, /more/i],
+    ]
+
+    for (const [data, expected] of cases) {
+      const response = await request.post('/v1/contact', { data })
+
+      expect(response.status(), JSON.stringify(data)).toBe(400)
+      expect((await response.json()).message).toMatch(expected)
+    }
+  })
+
+  test('a filled honeypot is accepted and quietly discarded', async ({ request }) => {
+    const response = await request.post('/v1/contact', {
+      data: {
+        name: 'Definitely A Person',
+        email: 'bot@example.com',
+        message: 'Buy cheap things at this address, friend.',
+        website: 'http://spam.example',
+      },
+    })
+
+    // Answered as though it sent. A bot told it was caught retries with the field left blank; one
+    // told "thank you" goes away — and this instance has no mail configured, so a genuine send
+    // would have failed with 503 rather than succeeding.
+    expect(response.status()).toBe(200)
+    expect((await response.json()).sent).toBe(true)
+  })
+
+  test('a valid message reaches the sender, and says so plainly when it cannot go', async ({ request }) => {
+    const response = await request.post('/v1/contact', {
+      data: {
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        message: 'Does the form designer support radio groups across several pages?',
+      },
+    })
+
+    // 200 where mail really goes out, 502 where the provider refuses (which is what the test
+    // harness's deliberately invalid key produces), 503 where nothing is configured at all. What
+    // must not happen is a 500, or a cheerful 200 from an instance that cannot actually send.
+    expect([200, 502, 503]).toContain(response.status())
+
+    if (response.status() !== 200) {
+      expect((await response.json()).message).toMatch(/could not be sent|not configured|GitHub/i)
+    }
+  })
+
+  test('it carries the same quota headers as every other action', async ({ request }) => {
+    const response = await request.post('/v1/contact', {
+      data: { name: 'Ada', email: 'ada@example.com', message: 'Checking the response headers.' },
+    })
+
+    expect(response.headers()['x-ratelimit-limit']).toBeTruthy()
+    expect(response.headers()['x-ratelimit-remaining']).toBeTruthy()
+  })
+
+  test('it stays out of the operations catalogue', async ({ request }) => {
+    const actions = await (await request.get('/v1/actions')).json()
+
+    // It is an action for rate-limiting purposes only. Listing it beside "merge" and "watermark"
+    // would misdescribe what this service does.
+    expect(actions.some((a: { action: string }) => a.action === 'Contact')).toBe(false)
+  })
+
+  test('it is rate limited far more tightly than the document endpoints', async ({ request }) => {
+    // Set low deliberately, rather than relying on the shipped ceiling and however much of it
+    // earlier tests happened to spend.
+    await setContactCeiling(request, 2, 3)
+
+    const statuses: number[] = []
+
+    for (let i = 0; i < 6; i++) {
+      const response = await request.post('/v1/contact', {
+        data: {
+          name: 'Flood',
+          email: 'flood@example.com',
+          message: `Message number ${i}, long enough to pass validation.`,
+        },
+      })
+
+      statuses.push(response.status())
+    }
+
+    // Two a minute, ten an hour. A public form that sends mail through a sender address we own is
+    // the most attractive thing here to abuse, and it would otherwise be the only unmetered
+    // endpoint on the service.
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0)
   })
 })

@@ -116,7 +116,19 @@ export default defineConfig({
          * suite starts on localhost, and the bootstrap only mints a key when none exists. A real
          * deployment sets Admin:BootstrapKey once, signs in, and removes it.
          */
-        env: { Admin__BootstrapKey: 'pw_e2e_test_admin_key_not_a_secret_1' },
+        env: {
+          Admin__BootstrapKey: 'pw_e2e_test_admin_key_not_a_secret_1',
+
+          /**
+           * Enough for the contact form to consider itself configured, and deliberately not
+           * enough to send anything. Brevo refuses the key, which is the point: everything up to
+           * the send is what the endpoint is responsible for, and no test should depend on real
+           * mail leaving the machine.
+           */
+          Contact__ApiKey: 'not-a-real-brevo-key',
+          Contact__To: 'nobody@example.invalid',
+          Contact__From: 'nobody@example.invalid',
+        },
         url: `${BASE_URL}/health`,
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,

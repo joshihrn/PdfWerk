@@ -168,6 +168,7 @@ const nav = [
       </div>
 
       <nav class="app-footer__links" aria-label="Site">
+        <RouterLink to="/contact">Contact</RouterLink>
         <RouterLink to="/privacy">Privacy</RouterLink>
         <RouterLink to="/terms">Terms</RouterLink>
         <a href="/docs" target="_blank" rel="noopener">API reference</a>

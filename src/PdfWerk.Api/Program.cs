@@ -6,6 +6,7 @@ using PdfWerk.Api.Infrastructure;
 using PdfWerk.Core.Abstractions;
 using PdfWerk.Core.Limits;
 using PdfWerk.Infrastructure;
+using PdfWerk.Infrastructure.Contact;
 using PdfWerk.Infrastructure.RateLimiting;
 using PdfWerk.Pdf;
 using PdfWerk.Pdf.Word;
@@ -17,6 +18,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
+builder.Services.Configure<ContactOptions>(builder.Configuration.GetSection(ContactOptions.SectionName));
+
+// A typed client so the send has a timeout of its own: a contact form that hangs because a mail
+// provider is slow holds a request open and, worse, holds one of the caller's concurrency slots.
+builder.Services.AddHttpClient<IContactSender, BrevoContactSender>(client =>
+    client.Timeout = TimeSpan.FromSeconds(15));
 
 // Only registered when a retention window is set. Indefinite is the default, and a background
 // loop that exists solely to decide it has nothing to do is noise.
@@ -154,6 +161,7 @@ app.MapOpenApi();
 app.MapScalarApiReference("/docs");
 
 app.MapAdminEndpoints();
+app.MapContactEndpoints();
 app.MapPdfEndpoints();
 app.MapPageEndpoints();
 app.MapKeyEndpoints();

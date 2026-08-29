@@ -123,17 +123,30 @@
 
   /* ---- radius ---------------------------------------------------------
      Restrained. Heavy rounding reads consumer; 6px is the working default. */
-  --r-sm: 3px;
-  --r-md: 5px;
-  --r-lg: 8px;
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+  --r-xl: 14px;
   --r-full: 999px;
 
   /* ---- elevation ------------------------------------------------------
      Borders do the structural work. Shadow is reserved for things that genuinely
      float above the page — menus, dialogs, toasts. */
-  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 20, 28, 0.09), 0 1px 2px rgba(16, 20, 28, 0.05);
-  --shadow-lg: 0 12px 32px rgba(16, 20, 28, 0.14), 0 2px 6px rgba(16, 20, 28, 0.06);
+  /* Layered and tight rather than one soft blur. A close contact shadow reads as a
+     physical edge; the wider ambient layer gives it somewhere to sit. One big blurry
+     shadow is what makes an interface look cheap. */
+  --shadow-xs: 0 1px 1px rgba(16, 20, 28, 0.04), 0 1px 2px rgba(16, 20, 28, 0.06);
+  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.06), 0 2px 4px -1px rgba(16, 20, 28, 0.06);
+  --shadow-md: 0 2px 4px -1px rgba(16, 20, 28, 0.07), 0 8px 16px -4px rgba(16, 20, 28, 0.10);
+  --shadow-lg: 0 4px 8px -2px rgba(16, 20, 28, 0.08), 0 16px 32px -8px rgba(16, 20, 28, 0.16);
+
+  /* A one-pixel light edge along the top of a raised surface. This is the single biggest
+     difference between a control that looks moulded and one that looks drawn. */
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --highlight-solid: inset 0 1px 0 rgba(255, 255, 255, 0.13);
+
+  /* Fields read as recessed rather than raised — the inverse of a button. */
+  --inset: inset 0 1px 2px rgba(16, 20, 28, 0.06);
 
   /* ---- motion ---------------------------------------------------------
      Short enough to feel instant. Anything past ~200ms feels like waiting. */
@@ -143,8 +156,8 @@
 
   --focus-ring: 0 0 0 2px var(--bg-raised), 0 0 0 4px var(--focus);
 
-  --control-h: 32px;
-  --control-h-lg: 38px;
+  --control-h: 34px;
+  --control-h-lg: 40px;
 
   --page-max: 1200px;
 }
@@ -193,9 +206,13 @@
   --bad-bg:  #2a1414;
   --bad-bd:  #522524;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.5), 0 8px 16px -4px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.55), 0 16px 32px -8px rgba(0, 0, 0, 0.65);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --highlight-solid: inset 0 1px 0 rgba(0, 0, 0, 0.12);
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 /* Follows the OS only when the user has expressed no preference of their own. */
@@ -238,9 +255,13 @@
     --bad-bg:  #2a1414;
     --bad-bd:  #522524;
 
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.5), 0 8px 16px -4px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.55), 0 16px 32px -8px rgba(0, 0, 0, 0.65);
+    --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --highlight-solid: inset 0 1px 0 rgba(0, 0, 0, 0.12);
+    --inset: inset 0 1px 2px rgba(0, 0, 0, 0.35);
   }
 }
 

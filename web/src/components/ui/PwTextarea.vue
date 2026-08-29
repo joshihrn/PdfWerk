@@ -43,6 +43,7 @@ const model = defineModel<string>()
   line-height: 1.6;
   resize: vertical;
   min-height: 96px;
+  box-shadow: var(--inset);
   transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
 }
 
@@ -61,7 +62,7 @@ const model = defineModel<string>()
 
 .textarea:focus-visible {
   border-color: var(--focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+  box-shadow: var(--inset), 0 0 0 3px color-mix(in srgb, var(--focus) 20%, transparent);
 }
 
 .textarea:disabled {

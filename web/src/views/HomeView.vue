@@ -315,15 +315,25 @@ const tiers = [
   padding: var(--s-4);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   color: inherit;
-  transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--fast) var(--ease),
+    box-shadow var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .op:hover {
   border-color: var(--border-strong);
-  background: var(--bg-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
   text-decoration: none;
+}
+
+.op:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
 }
 
 .op__head {

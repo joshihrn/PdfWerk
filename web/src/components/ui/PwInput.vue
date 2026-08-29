@@ -51,6 +51,7 @@ const model = defineModel<string | number>()
   border-radius: var(--r-md);
   font-family: inherit;
   font-size: var(--t-13);
+  box-shadow: var(--inset);
   transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
 }
 
@@ -68,7 +69,7 @@ const model = defineModel<string | number>()
 
 .input:focus-visible {
   border-color: var(--focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+  box-shadow: var(--inset), 0 0 0 3px color-mix(in srgb, var(--focus) 20%, transparent);
 }
 
 .input:disabled {

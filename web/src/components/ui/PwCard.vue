@@ -41,6 +41,7 @@ withDefaults(
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
+  box-shadow: var(--shadow-xs);
   overflow: hidden;
 }
 

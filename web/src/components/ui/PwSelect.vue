@@ -18,6 +18,15 @@ withDefaults(
 )
 
 const model = defineModel<string | number>()
+
+/**
+ * Attributes go to the <select>, not to the wrapper.
+ *
+ * The wrapper exists only to position the chevron, and by default Vue would drop fallthrough
+ * attributes on it — which quietly left `aria-label` on a plain <div> and the actual control
+ * with no accessible name at all. Two selects in the form designer are labelled that way.
+ */
+defineOptions({ inheritAttrs: false })
 </script>
 
 <template>
@@ -29,6 +38,7 @@ const model = defineModel<string | number>()
       :disabled="disabled"
       :aria-invalid="invalid || undefined"
       :aria-describedby="describedBy"
+      v-bind="$attrs"
     >
       <option v-for="option in options" :key="option.value" :value="option.value" :disabled="option.disabled">
         {{ option.label }}

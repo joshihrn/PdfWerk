@@ -223,3 +223,30 @@ function crc32(buffer: Buffer): number {
   for (const byte of buffer) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8)
   return (crc ^ 0xffffffff) >>> 0
 }
+
+/**
+ * A PDF that already carries form fields, built through the API rather than the designer.
+ *
+ * Fill mode needs a document with fields in it, and going through the browser designer first
+ * would make a fill failure look like a designer failure.
+ */
+export async function makeFormPdf(request: APIRequestContext): Promise<Buffer> {
+  const key = await apiKey(request)
+  const pdf = await sharedPdf(request)
+
+  const response = await request.post('/v1/forms/design?delivery=stream', {
+    headers: authHeaders(key),
+    multipart: {
+      file: pdfPart(pdf),
+      request: JSON.stringify({
+        add: [
+          { name: 'clientName', type: 'Text', rect: { page: 1, x: 72, y: 300, width: 240, height: 22 } },
+          { name: 'agreed', type: 'Checkbox', rect: { page: 1, x: 72, y: 260, width: 16, height: 16 } },
+        ],
+      }),
+    },
+  })
+
+  expect(response.ok(), 'could not build a form fixture').toBeTruthy()
+  return Buffer.from(await response.body())
+}

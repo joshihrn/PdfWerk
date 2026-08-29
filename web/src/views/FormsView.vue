@@ -165,6 +165,15 @@ async function renderPage() {
   const document = await pdfjs.getDocument({ data }).promise
   const rendered = await document.getPage(currentPage.value)
 
+  // Re-read the canvas after the awaits, not only on entry.
+  //
+  // Four awaits happen above — two dynamic imports and two pdf.js calls — and the designer can
+  // be unmounted during any of them, because switching to fill mode removes the canvas from the
+  // DOM. Trusting the entry guard meant calling getContext on null and surfacing the raw
+  // TypeError to the user in place of the document panel.
+  const target = canvas.value
+  if (!target) return
+
   // Measured on the block-level wrapper, minus its padding.
   //
   // .designer is inline-block, so its own width reports the canvas rather than the space
@@ -176,20 +185,23 @@ async function renderPage() {
   scale.value = Math.min(available / viewport.width, 1.6)
 
   const scaled = rendered.getViewport({ scale: scale.value * window.devicePixelRatio })
-  const context = canvas.value.getContext('2d')
+  const context = target.getContext('2d')
   if (!context) return
 
-  canvas.value.width = scaled.width
-  canvas.value.height = scaled.height
-  canvas.value.style.width = `${scaled.width / window.devicePixelRatio}px`
-  canvas.value.style.height = `${scaled.height / window.devicePixelRatio}px`
+  target.width = scaled.width
+  target.height = scaled.height
+  target.style.width = `${scaled.width / window.devicePixelRatio}px`
+  target.style.height = `${scaled.height / window.devicePixelRatio}px`
 
   // Before the await, not after. The canvas is visible the moment it has dimensions, so a
   // click can land while the render is still in flight — and a stale scale at that instant
   // puts the field in the wrong place.
   syncScale()
 
-  await rendered.render({ canvasContext: context, viewport: scaled, canvas: canvas.value }).promise
+  await rendered.render({ canvasContext: context, viewport: scaled, canvas: target }).promise
+
+  // And once more: the render itself is awaited, so the canvas can go away during it too.
+  if (canvas.value !== target) return
   pageReady.value = true
 
   // Trust the rendered element, not the intended size.

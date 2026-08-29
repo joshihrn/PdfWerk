@@ -15,6 +15,24 @@ Two suites against a real, running PdfWerk:
   server ships, an axe audit of every page in light and dark, keyboard operation, behaviour at
   the rate limit, error recovery, and layout at 375px.
 
+- **`tests/demo.spec.ts`** — the guided tour. One test, one page, one continuous take through
+  every feature on its happy path. The other two suites ask what happens when things go wrong;
+  this one only asks whether the whole thing works end to end, and stops at the first thing that
+  does not. It is the run to watch, and the one to show someone.
+
+  It leaves evidence in `demo-output/`: a numbered screenshot per step, and the eight documents
+  it produces, saved through the browser's own download path — which is also the only place
+  anything exercises downloading rather than previewing. Later steps upload what earlier steps
+  made, so the form it fills is the form it drew.
+
+  ```bash
+  npm run demo            # headed, watch it happen
+  npm run demo:headless   # same steps, no window
+  ```
+
+  It is excluded from `npm test` on purpose: that run is for catching regressions, and the tour
+  walks the same happy paths a third time.
+
 ## Running
 
 ```bash

@@ -520,6 +520,30 @@ test.describe('form fill', () => {
     await expect(page.getByLabel('agreed')).toBeVisible()
   })
 
+  test('switching to fill mode while the page is still rendering does not error', async ({
+    page,
+    request,
+  }) => {
+    const problems: string[] = []
+    page.on('pageerror', (error) => problems.push(error.message))
+
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'form.pdf',
+      mimeType: 'application/pdf',
+      buffer: await makeFormPdf(request),
+    })
+
+    // Deliberately without waiting for the canvas. pdf.js renders behind several awaits, and
+    // switching modes unmounts the canvas mid-flight — which used to surface a raw
+    // "Cannot read properties of null (reading 'getContext')" where the document panel goes.
+    await page.getByRole('tab', { name: 'Fill values' }).click()
+
+    await expect(page.getByLabel('clientName')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/getContext|Cannot read properties/)).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+
   test('values written in the browser reach the produced document', async ({ page, request }) => {
     await page.goto('/forms')
     await page.setInputFiles('input[type="file"]', {

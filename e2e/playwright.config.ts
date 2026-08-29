@@ -68,6 +68,25 @@ export default defineConfig({
         viewport: { width: 1440, height: 900 },
       },
     },
+
+    /**
+     * The guided tour. Not in the default run — `npm test` is for catching regressions, and the
+     * tour walks the same happy paths a third time. Ask for it with `--project=demo`.
+     *
+     * Video and trace are always on here because a recording is the point, not a diagnostic.
+     */
+    {
+      name: 'demo',
+      testMatch: /demo\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        video: 'on',
+        trace: 'on',
+        screenshot: 'off',
+        actionTimeout: 30_000,
+      },
+    },
   ],
 
   /**

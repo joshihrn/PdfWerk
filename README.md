@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-149 Playwright tests against a real running instance — 36 driving the HTTP API directly and 113
+151 Playwright tests against a real running instance — 36 driving the HTTP API directly and 115
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -204,6 +204,7 @@ there are no binary files checked in and nothing to set up first.
 | `npm run watch` | Playwright UI mode: pick tests, watch them run, step back through any point in time |
 | `npm run slow` | Headed and slowed down, for watching a flow in a real browser |
 | `npm run api` / `npm run ui` | One project only |
+| `npm run demo` | The guided tour: every feature in one continuous run, in a visible browser |
 | `npm run report` | Opens the last HTML report |
 
 They run on a single worker on purpose. The service is rate limited per caller and parallel

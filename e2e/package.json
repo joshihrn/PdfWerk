@@ -3,12 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "playwright test --project=api --project=chromium",
     "watch": "playwright test --ui",
     "headed": "playwright test --headed --project=chromium",
     "slow": "playwright test --headed --project=chromium --workers=1 --timeout=0",
-    "api": "playwright test api",
-    "ui": "playwright test ui",
+    "api": "playwright test --project=api",
+    "ui": "playwright test --project=chromium",
+    "demo": "playwright test --project=demo --headed",
+    "demo:headless": "playwright test --project=demo",
     "report": "playwright show-report",
     "install-browsers": "playwright install chromium"
   },

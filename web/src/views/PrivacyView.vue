@@ -57,8 +57,11 @@ const updated = '29 August 2026'
       works from a salted hash that cannot be reversed to an address.
     </p>
     <p>
-      <strong>Retention.</strong> The log is kept for as long as the operator of this instance
-      configures. On a self-hosted deployment that is whatever they choose, including indefinitely.
+      <strong>Retention.</strong> Log entries are deleted automatically after
+      <strong>90 days</strong>. That is long enough to investigate an abuse pattern that built up
+      over weeks, and short enough that we are not holding addresses we have no use for. A
+      self-hosted copy of this software can be configured differently, so if you are not on
+      pdfwerk.com, ask whoever runs it.
     </p>
 
     <h2>API keys</h2>

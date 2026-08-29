@@ -18,9 +18,12 @@ public sealed class AdminOptions
     /// Days to keep request log rows. 0 keeps them indefinitely.
     /// </summary>
     /// <remarks>
-    /// Indefinite by default because that is what was asked for, but worth a decision rather than
-    /// a shrug: addresses are personal data in the UK and EU, an unbounded table is a growing
-    /// storage cost, and "we kept everything forever" is a poor answer to why.
+    /// Ninety in the shipped configuration: long enough to investigate an abuse pattern that
+    /// developed over weeks, short enough to be defensible. Addresses are personal data in the UK
+    /// and EU, where the storage-limitation principle says you keep personal data no longer than
+    /// you need it — and this is the only table holding them in the clear.
+    ///
+    /// Whatever this is set to, the privacy notice has to say the same number.
     /// </remarks>
     public int RetentionDays { get; set; }
 }

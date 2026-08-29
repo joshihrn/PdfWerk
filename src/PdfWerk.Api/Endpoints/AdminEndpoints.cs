@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using PdfWerk.Api.Infrastructure;
 using PdfWerk.Core;
 using PdfWerk.Core.Abstractions;
@@ -88,6 +89,12 @@ public static class AdminEndpoints
             await limits.ResetAsync(tier, action ?? string.Empty, ct).ConfigureAwait(false);
             return Results.Ok(new { reset = true });
         });
+
+        // Exposed so the published privacy notice can be checked against what the server actually
+        // does. A notice promising 90 days while the log is kept forever is a false statement
+        // about personal data, and nothing would otherwise catch the two drifting apart.
+        admin.MapGet("/retention", (IOptions<AdminOptions> options) =>
+            Results.Ok(new { retentionDays = options.Value.RetentionDays }));
 
         // ---- who am I ------------------------------------------------------
 

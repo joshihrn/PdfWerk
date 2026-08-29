@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-202 Playwright tests against a real running instance — 57 driving the HTTP API directly and 145
+203 Playwright tests against a real running instance — 57 driving the HTTP API directly and 146
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -283,8 +283,9 @@ Things worth knowing:
 - **Requests are logged with raw addresses.** Everywhere else in the service works from a salted
   hash, deliberately; the log cannot, because an administrator cannot block what they cannot read
   and a hash cannot be matched against a range. That makes this the most sensitive table here.
-  `Admin:RetentionDays` prunes it; `0`, the default, keeps everything indefinitely. Addresses are
-  personal data in the UK and EU, so that default is worth a decision rather than a shrug.
+  `Admin:RetentionDays` prunes it, set to **90 days** here — long enough to investigate an abuse
+  pattern that built up over weeks, short enough to be defensible. `0` keeps everything
+  indefinitely. Whatever it is set to, the privacy notice has to state the same number.
 - **Static assets are not logged**, and query strings are never stored — they carry keys and
   one-time links often enough that keeping them turns an audit trail into a credential store.
 - **Blocking is enforced ahead of everything else**, so a blocked caller never reaches the rate

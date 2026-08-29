@@ -1905,6 +1905,22 @@ test.describe('brand and legal pages', () => {
     await expect(page.getByText(/summaris/i).first()).toBeVisible()
   })
 
+  test('the retention the notice promises is the retention configured', async ({ page, request }) => {
+    await page.goto('/privacy')
+
+    const promised = (await page.locator('.legal').innerText()).match(/deleted automatically after\s+(\d+)\s+days/i)?.[1]
+
+    expect(promised, 'the privacy notice should state a retention period').toBeTruthy()
+
+    // A notice promising 90 days while the server keeps everything forever is a false statement
+    // about personal data, and nothing else in the suite would notice it.
+    const configured = await (await request.get('/v1/admin/retention', {
+      headers: { 'X-Api-Key': 'pw_e2e_test_admin_key_not_a_secret_1' },
+    })).json()
+
+    expect(Number(promised)).toBe(configured.retentionDays)
+  })
+
   test('the icons and manifest are served', async ({ request }) => {
     for (const [path, type] of [
       ['/brand/favicon-adaptive.svg', 'image/svg+xml'],

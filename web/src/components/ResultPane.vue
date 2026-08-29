@@ -56,8 +56,16 @@ function download() {
       <span class="row"><PwSpinner :size="13" /> {{ busyHint ?? 'Working…' }}</span>
     </PwCallout>
 
+    <!--
+      Always assertive, whatever the tone.
+
+      A rate limit is shown in warn rather than bad because being throttled is not the same as
+      being broken — but the operation still did not happen, and the user is waiting on it.
+      Letting the colour decide the urgency made this the one failure that did not interrupt.
+    -->
     <PwCallout
       v-else-if="message"
+      assertive
       :tone="isRateLimit ? 'warn' : 'bad'"
       :title="isRateLimit ? 'Rate limit reached' : 'That did not work'"
     >

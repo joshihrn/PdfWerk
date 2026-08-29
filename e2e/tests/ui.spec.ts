@@ -930,3 +930,239 @@ test.describe('embed widget', () => {
     expect(emptied.after).toBe(0)
   })
 })
+
+/**
+ * How the interface behaves at the ceiling.
+ *
+ * The limiter itself is proven in the API suite against real quota. These tests are about the
+ * browser's half of the contract, so the 429 is injected rather than earned — that keeps the
+ * assertions about presentation, and stops the UI tests from spending quota the API tests need
+ * or racing the same per-minute bucket.
+ */
+test.describe('rate limiting in the browser', () => {
+  const rejection = {
+    status: 429,
+    contentType: 'application/json',
+    headers: {
+      'Retry-After': '34',
+      'X-RateLimit-Limit': '20',
+      'X-RateLimit-Remaining': '0',
+      'X-RateLimit-Window': 'minute',
+    },
+    body: JSON.stringify({
+      error: 'rate_limited',
+      window: 'minute',
+      limit: 20,
+      retryAfterSeconds: 34,
+      message: 'Rate limit reached for CreateFromText: 20 per minute. Try again in 34s.',
+    }),
+  }
+
+  test('a refusal is shown as a limit, not as a failure', async ({ page }) => {
+    await page.route('**/v1/create/text*', (route) => route.fulfill(rejection))
+    await page.goto('/create')
+
+    await page.getByLabel('Document body').fill('Over the ceiling.')
+    await page.getByRole('button', { name: 'Preview' }).click()
+
+    // Being throttled is not the same as being broken, and the interface should not imply it is.
+    await expect(page.getByText('Rate limit reached', { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('That did not work')).toHaveCount(0)
+  })
+
+  test('the refusal says when to try again', async ({ page }) => {
+    await page.route('**/v1/create/text*', (route) => route.fulfill(rejection))
+    await page.goto('/create')
+
+    await page.getByLabel('Document body').fill('Over the ceiling.')
+    await page.getByRole('button', { name: 'Preview' }).click()
+
+    // Without the wait, the only recourse a caller has is to retry blindly and stay throttled.
+    await expect(page.getByText(/Try again in 34s/)).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('the refusal is announced, not merely displayed', async ({ page }) => {
+    await page.route('**/v1/create/text*', (route) => route.fulfill(rejection))
+    await page.goto('/create')
+
+    await page.getByLabel('Document body').fill('Over the ceiling.')
+    await page.getByRole('button', { name: 'Preview' }).click()
+
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('the control is usable again afterwards, and success clears the message', async ({ page }) => {
+    let refuse = true
+    await page.route('**/v1/create/text*', async (route) => {
+      if (refuse) return route.fulfill(rejection)
+      return route.continue()
+    })
+
+    await page.goto('/create')
+    await page.getByLabel('Document body').fill('First attempt.')
+    await page.getByRole('button', { name: 'Preview' }).click()
+    await expect(page.getByText('Rate limit reached', { exact: true })).toBeVisible({ timeout: 20_000 })
+
+    // A refusal must not leave the button stuck in its loading state, or the wait becomes
+    // permanent from the user's point of view.
+    await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled()
+
+    refuse = false
+    await page.getByRole('button', { name: 'Preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('Rate limit reached', { exact: true })).toHaveCount(0)
+  })
+
+  test('an anonymous visitor is told a key would raise the ceiling', async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.removeItem('pdfwerk.apiKey'))
+    await page.goto('/api')
+
+    // The whole point of the free tier is that the way out of a limit is one request away.
+    await expect(page.getByRole('button', { name: 'Create a free key' })).toBeVisible()
+  })
+})
+
+test.describe('error recovery', () => {
+  test('a second attempt after a server error works', async ({ page, request }) => {
+    let fail = true
+    await page.route('**/v1/inspect*', async (route) => {
+      if (fail) {
+        fail = false
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'server_error', message: 'Something broke.' }),
+        })
+      }
+      return route.continue()
+    })
+
+    await page.goto('/inspect')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: await sharedPdf(request),
+    })
+
+    await page.getByRole('button', { name: 'Inspect' }).click()
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+
+    // The failure has to be recoverable in place; making the user reload would be a bug.
+    await page.getByRole('button', { name: 'Inspect' }).click()
+    await expect(page.getByRole('heading', { name: 'Document', exact: true }).last()).toBeVisible({
+      timeout: 20_000,
+    })
+    await expect(page.locator('[role="alert"]')).toHaveCount(0)
+  })
+
+  test('a network failure is reported rather than hanging', async ({ page, request }) => {
+    await page.route('**/v1/inspect*', (route) => route.abort('failed'))
+
+    await page.goto('/inspect')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: await sharedPdf(request),
+    })
+
+    await page.getByRole('button', { name: 'Inspect' }).click()
+
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: 'Inspect' })).toBeEnabled()
+  })
+})
+
+test.describe('keyboard', () => {
+  test('the segmented control moves with arrow keys, one tab stop for the group', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'doc.pdf',
+      mimeType: 'application/pdf',
+      buffer: await sharedPdf(request),
+    })
+
+    const design = page.getByRole('tab', { name: 'Design fields' })
+    await design.focus()
+    await expect(design).toBeFocused()
+
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('tab', { name: 'Fill values' })).toBeFocused()
+
+    // Wrapping is what makes a roving tabindex feel finished rather than truncated.
+    await page.keyboard.press('ArrowRight')
+    await expect(design).toBeFocused()
+
+    await page.keyboard.press('End')
+    await expect(page.getByRole('tab', { name: 'Fill values' })).toBeFocused()
+  })
+
+  test('a form can be completed without a mouse', async ({ page }) => {
+    await page.goto('/create')
+
+    await page.getByLabel('Document body').focus()
+    await page.keyboard.type('Typed with the keyboard only.')
+
+    const preview = page.getByRole('button', { name: 'Preview' })
+    await preview.focus()
+    await page.keyboard.press('Enter')
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('focus is visible wherever it lands', async ({ page }) => {
+    await page.goto('/create')
+    await page.getByLabel('Title').focus()
+
+    const outline = await page
+      .getByLabel('Title')
+      .evaluate((el) => {
+        const s = getComputedStyle(el)
+        return { width: s.outlineWidth, style: s.outlineStyle, shadow: s.boxShadow }
+      })
+
+    // Keyboard users navigate by seeing where they are; an invisible focus ring is the single
+    // most common way to make an otherwise accessible interface unusable.
+    const visible = parseFloat(outline.width) > 0 && outline.style !== 'none'
+    expect(visible || outline.shadow !== 'none').toBe(true)
+  })
+})
+
+test.describe('small screens', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('the landing page fits without sideways scrolling', async ({ page }) => {
+    await page.goto('/')
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+
+    // A page that scrolls horizontally on a phone reads as broken, whatever else it does well.
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('a tool page is usable at phone width', async ({ page }) => {
+    await page.goto('/create')
+
+    await expect(page.getByLabel('Document body')).toBeVisible()
+    await page.getByLabel('Document body').fill('From a phone.')
+    await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled()
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('navigation is still reachable', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(
+      page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Create', exact: true }),
+    ).toBeVisible()
+  })
+})

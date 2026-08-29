@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:embed": "vite build --config vite.embed.config.ts",
+    "build:all": "npm run build:embed && npm run build"
   },
   "dependencies": {
     "pdfjs-dist": "^6.2.108",

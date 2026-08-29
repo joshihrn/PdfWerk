@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PdfWerk embed — examples</title>
+<style>
+  /* Deliberately aggressive host styles: the widget lives in a shadow root, so none of this
+     should reach inside it. If the embed ever starts inheriting these, it is a real bug. */
+  * { font-family: 'Comic Sans MS', cursive; }
+  body { margin: 0; padding: 40px 24px 80px; background: #f4f6fb; color: #222; line-height: 1.6; }
+  button { background: hotpink !important; border: 4px dashed lime; font-size: 22px; }
+  input, textarea, select { border: 3px solid orange; background: #ffe; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 30px; margin-bottom: 4px; }
+  h2 { font-size: 19px; margin-top: 40px; }
+  .lede { color: #555; max-width: 65ch; }
+  .demo { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 18px; }
+  pre { background: #10152b; color: #dbe3f5; padding: 14px; border-radius: 10px; overflow-x: auto;
+        font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.5; }
+  code { font-family: ui-monospace, Menlo, monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #dde2ec; vertical-align: top; }
+  th { color: #555; font-size: 12.5px; text-transform: uppercase; letter-spacing: .4px; }
+  #log { background: #10152b; color: #7ce0bd; padding: 12px; border-radius: 10px; min-height: 44px;
+         font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PdfWerk embed</h1>
+  <p class="lede">
+    One script tag drops a working PDF tool into any page. This page is deliberately styled with
+    Comic Sans, hot-pink buttons and orange inputs — none of which reach the widgets below,
+    because each renders inside its own shadow root.
+  </p>
+
+  <h2>Install</h2>
+  <pre>&lt;div id="pdf-create"&gt;&lt;/div&gt;
+&lt;script src="/pdfwerk-embed.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  PdfWerk.mount('#pdf-create', {
+    tool: 'create',          // create | word | merge | summarize | fill | inspect
+    apiKey: 'pw_…',          // optional; raises your quota
+    delivery: 'preview',     // download | preview | callback
+    theme: 'auto',           // light | dark | auto
+    onResult: (blob, meta) =&gt; console.log('got', meta.fileName, blob.size)
+  })
+&lt;/script&gt;</pre>
+
+  <h2>Options</h2>
+  <table>
+    <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>tool</code></td><td>Which tool to render. Required.</td></tr>
+      <tr><td><code>apiKey</code></td><td>Optional. Without one the caller is on the anonymous tier.</td></tr>
+      <tr><td><code>baseUrl</code></td><td>Where the API lives. Defaults to the origin serving the script, so cross-origin embedding just works.</td></tr>
+      <tr><td><code>delivery</code></td><td><code>download</code> saves the file, <code>preview</code> renders it inline, <code>callback</code> hands it to your code only.</td></tr>
+      <tr><td><code>onResult</code></td><td>Always fires with the finished <code>Blob</code>, whatever the delivery mode.</td></tr>
+      <tr><td><code>onData</code></td><td>Fires for JSON tools (<code>summarize</code>, <code>inspect</code>).</td></tr>
+      <tr><td><code>theme</code>, <code>title</code></td><td>Appearance. <code>auto</code> follows the host page's colour scheme.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Live widgets</h2>
+  <p class="lede">These are real, and talk to this server.</p>
+
+  <div class="demo">
+    <div>
+      <div id="pdf-create"></div>
+    </div>
+    <div>
+      <div id="pdf-merge"></div>
+    </div>
+    <div>
+      <div id="pdf-inspect"></div>
+    </div>
+    <div>
+      <div id="pdf-fill"></div>
+    </div>
+  </div>
+
+  <h2>Callback output</h2>
+  <p class="lede">Everything the widgets hand back to this page shows up here.</p>
+  <div id="log">waiting…</div>
+</div>
+
+<script src="/pdfwerk-embed.js"></script>
+<script>
+  const log = document.getElementById('log')
+  const say = (line) => {
+    log.textContent = `${new Date().toLocaleTimeString()} — ${line}\n` + log.textContent
+  }
+
+  PdfWerk.mount('#pdf-create', {
+    tool: 'create',
+    delivery: 'preview',
+    onResult: (blob, meta) => say(`create → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB`),
+    onError: (e) => say(`create failed → ${e.message}`),
+  })
+
+  PdfWerk.mount('#pdf-merge', {
+    tool: 'merge',
+    delivery: 'callback',
+    onResult: (blob, meta) => say(`merge → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB (kept in your code)`),
+    onError: (e) => say(`merge failed → ${e.message}`),
+  })
+
+  PdfWerk.mount('#pdf-inspect', {
+    tool: 'inspect',
+    onData: (info) => say(`inspect → ${info.pageCount} page(s), ${info.fields.length} field(s)`),
+    onError: (e) => say(`inspect failed → ${e.message}`),
+  })
+
+  PdfWerk.mount('#pdf-fill', {
+    tool: 'fill',
+    delivery: 'preview',
+    onResult: (blob, meta) => say(`fill → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB`),
+    onError: (e) => say(`fill failed → ${e.message}`),
+  })
+
+  say(`PdfWerk embed v${PdfWerk.version} · tools: ${PdfWerk.tools.join(', ')}`)
+</script>
+</body>
+</html>

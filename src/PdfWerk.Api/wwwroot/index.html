@@ -156,6 +156,20 @@ This agreement is made between **Acme Corporation** and the client.
     <iframe class="preview" id="wordPreview" style="display:none"></iframe>
   </div>
 
+  <div class="tool">
+    <h3>Summarise a PDF</h3>
+    <p class="hint">Extracts the text and asks a free model to summarise it. Long documents are split and merged automatically.</p>
+    <input type="file" id="sumFile" accept="application/pdf">
+    <div class="row">
+      <div><label>Style</label><select id="sumStyle"><option>Brief</option><option>Detailed</option><option>Bullets</option><option>ExecutiveSummary</option></select></div>
+      <div><label>Focus (optional)</label><input type="text" id="sumFocus" placeholder="e.g. payment terms"></div>
+      <div><label>Provider</label><select id="sumProvider"><option value="">Auto</option></select></div>
+    </div>
+    <div class="cta"><button class="btn primary" onclick="summarize()">Summarise</button></div>
+    <div class="out" id="sumOut"></div>
+    <pre class="quota" id="sumBody" style="white-space:pre-wrap"></pre>
+  </div>
+
   <h2>Your quota</h2>
   <div class="tool">
     <p class="hint">Limits apply per action and are enforced on every call. Nothing is consumed by checking.</p>
@@ -271,6 +285,45 @@ async function quota() {
     data.quotas.map(q => `  ${q.action.padEnd(16)} ${JSON.stringify(q.remaining)}`).join('\n');
 }
 
+async function summarize() {
+  const f = $('sumFile').files[0];
+  if (!f) return say('sumOut', 'Choose a PDF first.', 'err');
+  say('sumOut', 'Reading and summarising…');
+  $('sumBody').textContent = '';
+
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('request', JSON.stringify({
+    style: $('sumStyle').value,
+    focus: $('sumFocus').value || null,
+    provider: $('sumProvider').value || null,
+    maxWords: 250
+  }));
+
+  const res = await fetch('/v1/summarize', { method: 'POST', body: fd });
+  if (!res.ok) return say('sumOut', await fail(res), 'err');
+
+  const r = await res.json();
+  say('sumOut', `${r.providerUsed} / ${r.modelUsed} · ${r.pageCount} page(s) · ${r.wordCount} words${quotaLine(res)}`, 'ok');
+  $('sumBody').textContent = r.summary + (r.keyPoints?.length ? '\n\n• ' + r.keyPoints.join('\n• ') : '');
+}
+
+async function loadProviders() {
+  const res = await fetch('/v1/providers');
+  const list = await res.json();
+  const sel = $('sumProvider');
+  for (const p of list) {
+    const opt = document.createElement('option');
+    opt.value = p.key;
+    opt.textContent = `${p.key} (${p.configured ? 'ready' : 'not configured'})`;
+    opt.disabled = !p.configured;
+    sel.appendChild(opt);
+  }
+  if (!list.some(p => p.configured)) {
+    say('sumOut', 'No AI provider is configured on this server yet — add a Gemini or Groq key, or run Ollama locally.', 'err');
+  }
+}
+
 (async function loadActions() {
   const res = await fetch('/v1/actions');
   const actions = await res.json();
@@ -281,6 +334,7 @@ async function quota() {
       <p style="margin-top:8px"><code>POST ${a.endpoint}</code></p>
     </div>`).join('');
   quota();
+  loadProviders();
 })();
 </script>
 </body>

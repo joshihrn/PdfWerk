@@ -22,6 +22,55 @@ public static class PdfEndpoints
         MapEdit(v1);
         MapForms(v1);
         MapCombine(v1);
+        MapSummarize(v1);
+    }
+
+    // ---- summarization ---------------------------------------------------
+
+    private static void MapSummarize(RouteGroupBuilder v1)
+    {
+        v1.MapPost("/summarize", (
+                HttpContext context,
+                ActionRunner runner,
+                IPdfSummarizer summarizer) =>
+                runner.RunAsync(context, PdfWerkAction.Summarize, async (limit, ct) =>
+                {
+                    var form = await context.Request.ReadFormAsync(ct).ConfigureAwait(false);
+                    var file = form.Files["file"];
+
+                    var pdf = await RequestGuard.ReadAsync(file, limit, ct).ConfigureAwait(false);
+                    RequestGuard.RequirePageBudget(pdf, limit, file!.FileName);
+
+                    var request = RequestGuard.ReadJsonPart(form, "request", new SummarizeRequest());
+
+                    var result = await summarizer.SummarizeAsync(pdf, request, ct).ConfigureAwait(false);
+
+                    context.Response.Headers["X-PdfWerk-Provider"] = result.ProviderUsed;
+                    return Results.Ok(result);
+                }))
+            .WithName("Summarize")
+            .WithSummary("Extract a PDF's text and return a structured AI summary.")
+            .DisableAntiforgery();
+
+        v1.MapGet("/providers", async (IAiProviderRegistry registry, CancellationToken ct) =>
+            {
+                var providers = new List<object>();
+
+                foreach (var provider in registry.All)
+                {
+                    providers.Add(new
+                    {
+                        key = provider.Key,
+                        model = provider.Model,
+                        contextTokens = provider.ContextTokens,
+                        configured = await provider.IsConfiguredAsync(ct).ConfigureAwait(false),
+                    });
+                }
+
+                return Results.Ok(providers);
+            })
+            .WithName("ListProviders")
+            .WithSummary("Report which AI providers this server can currently use.");
     }
 
     // ---- discovery -------------------------------------------------------

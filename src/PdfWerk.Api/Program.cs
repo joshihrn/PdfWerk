@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using PdfWerk.Ai;
 using PdfWerk.Api.Endpoints;
 using PdfWerk.Api.Infrastructure;
 using PdfWerk.Core.Abstractions;
@@ -35,6 +36,8 @@ builder.Services.AddSingleton<IPdfInspector, PdfInspector>();
 builder.Services.AddSingleton<IWordConverter, LibreOfficeWordConverter>();
 builder.Services.AddSingleton<IWordConverter, OpenXmlWordConverter>();
 builder.Services.AddSingleton<WordConversionPipeline>();
+
+builder.Services.AddPdfWerkAi(builder.Configuration);
 
 // ---- request plumbing ---------------------------------------------------
 

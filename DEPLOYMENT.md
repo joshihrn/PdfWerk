@@ -143,3 +143,61 @@ partly for that reason.
 | Small VPS (2 vCPU, 4 GB) | ~$12–24/mo — enough for the whole stack including LibreOffice |
 | Gemini free tier | $0 |
 | TLS via Caddy or Cloudflare | $0 |
+
+## The live deployment
+
+Running on Azure App Service for Containers in `westus2`, in resource group `rg_pdfwerk`.
+
+| Resource | Name | Note |
+| --- | --- | --- |
+| Container registry | `pdfwerkacr` | Basic. Pulled by managed identity, so no registry password is stored anywhere. |
+| App Service plan | `asp-pdfwerk` | Linux B1, pinned to **one instance**. |
+| Web app | `pdfwerk-api` | https://pdfwerk-api.azurewebsites.net |
+| Database | `pdfwerk` on `vm-sql-quintara` | Shares the Postgres server Quitara already pays for. |
+
+One instance is deliberate, not incidental. The rate limiter counts in-process without Redis, so a
+second instance would silently double every published limit. Scaling out requires setting
+`ConnectionStrings:Redis` first.
+
+Rebuild and release:
+
+```bash
+az acr build --registry pdfwerkacr --image pdfwerk:latest --file Dockerfile .
+az webapp restart -g rg_pdfwerk -n pdfwerk-api
+```
+
+### DNS for pdfwerk.com
+
+| Type | Name | Value | Purpose |
+| --- | --- | --- | --- |
+| A | `@` | `13.77.182.13` | Points the apex at the app |
+| TXT | `asuid` | `88326D3F114984ED494F915D1B63F14EB586A4B58A3446A498FF4123F42202F8` | Proves domain ownership to App Service |
+| TXT | `@` | `MS=ms34650661` | Microsoft 365 ownership |
+| TXT | `@` | `brevo-code:f24c4a81e37ade215b9b0f119ae73bd0` | Brevo ownership |
+| CNAME | `brevo1._domainkey` | `b1.pdfwerk-com.dkim.brevo.com` | DKIM |
+| CNAME | `brevo2._domainkey` | `b2.pdfwerk-com.dkim.brevo.com` | DKIM |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` | DMARC |
+
+The existing MX records pointing at `smtp.secureserver.net` must be **replaced** with Microsoft's,
+or mail to `support@pdfwerk.com` goes to GoDaddy's parking rather than the mailbox.
+
+An A record rather than a CNAME because GoDaddy cannot put a CNAME at the apex. The address is
+stable for the life of the app, but it is not reserved — deleting and recreating the app gets a
+new one, and the A record would need updating.
+
+### Settings that are not in source control
+
+Four values are set on the app rather than committed, because three are secrets and the fourth is
+a bootstrap credential:
+
+```bash
+az webapp config appsettings set -g rg_pdfwerk -n pdfwerk-api --settings   ConnectionStrings__Postgres="Host=vm-sql-quintara.postgres.database.azure.com;Database=pdfwerk;Username=<user>;Password=<password>;SSL Mode=Require"   Ai__Gemini__ApiKey="<gemini key>"   Contact__ApiKey="<brevo key>"   Admin__BootstrapKey="pw_<at least 24 characters>"
+```
+
+Remove `Admin:BootstrapKey` once you have signed in to `/admin` — a bootstrap credential left in
+configuration is a standing back door.
+
+Until `ConnectionStrings:Postgres` is set the app falls back to SQLite **inside the container**,
+which is wiped on every restart and every redeploy. API keys, the request log and the block list
+all vanish with it. Nothing appears broken, which is what makes it worth stating plainly.
+

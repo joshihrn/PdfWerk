@@ -18,7 +18,18 @@ public class ProviderOptions
     /// <summary>Override the API host, for a proxy or a self-hosted gateway.</summary>
     public string BaseUrl { get; set; } = string.Empty;
 
-    public int TimeoutSeconds { get; set; } = 90;
+    /// <summary>
+    /// Models to try, in order, when <see cref="Model"/> is retired or shedding load. Free
+    /// tiers do both routinely, and a chain keeps the feature working through either.
+    /// </summary>
+    public string[] FallbackModels { get; set; } = [];
+
+    /// <summary>
+    /// Overall budget for a completion, retries included. Must exceed the retry handler's
+    /// per-attempt timeout multiplied by its attempt count, or the last attempt is cancelled
+    /// before it can finish.
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 120;
 }
 
 /// <summary>Ollama needs no key, so availability is decided by whether the host answers.</summary>
@@ -44,10 +55,12 @@ public sealed class AiOptions
 
     public ProviderOptions Gemini { get; set; } = new()
     {
-        // 2.0 Flash has a genuinely free tier and a context large enough that most documents
-        // need no chunking at all.
-        Model = "gemini-2.0-flash",
-        ContextTokens = 900_000,
+        // A specific model first, then the aliases. Measured against a live free-tier key, the
+        // "-latest" aliases were consistently the most congested — everything defaults to them —
+        // while a named current model answered in about two seconds.
+        Model = "gemini-3.5-flash",
+        FallbackModels = ["gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"],
+        ContextTokens = 1_000_000,
     };
 
     public ProviderOptions Groq { get; set; } = new()

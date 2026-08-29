@@ -5,8 +5,13 @@
 Create PDFs from text or Word. Edit the text inside existing ones. Draw form fields with your
 mouse, merge values in, and flatten. Combine documents. Summarise them with a free AI model.
 
-MIT licensed, and every dependency is MIT, Apache-2.0 or BSD. No copyleft, and nothing that
-changes terms once you cross a revenue threshold — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Source-available under the [Business Source License 1.1](LICENSE): **free to use, modify and
+self-host**, including commercially and in production. The single reservation is offering PdfWerk
+to third parties as a competing hosted service. On **2030-08-29** it converts automatically to
+Apache-2.0.
+
+Every dependency is MIT, Apache-2.0 or BSD — no copyleft, nothing revenue-gated — so self-hosting
+carries no licensing surprises. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 
@@ -189,4 +194,7 @@ rate limits are real: Redis, and whether forwarded headers should be trusted.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+[Business Source License 1.1](LICENSE) — see [LICENSING.md](LICENSING.md) for what you may and may
+not do, in plain terms. Converts to [Apache-2.0](LICENSES/Apache-2.0.txt) on 2030-08-29.
+
+Contributions require a CLA; see [CONTRIBUTING.md](CONTRIBUTING.md).

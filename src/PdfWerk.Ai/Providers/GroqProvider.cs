@@ -62,7 +62,22 @@ public sealed class GroqProvider(
 
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
 
-        using var response = await client.SendAsync(message, ct).ConfigureAwait(false);
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(message, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            // Exhausted retries, or ran out of time. Either way it is an upstream problem, and
+            // the caller deserves a 503 saying so rather than an opaque 500.
+            throw new AiUnavailableException(
+                "Groq did not respond in time. Its free tier is often busy — try again in a moment, " +
+                "or configure a second provider to fall back to.");
+        }
+
+        using (response)
+        {
         await AiJson.EnsureSuccessAsync(response, "Groq", logger, ct).ConfigureAwait(false);
 
         var payload = await response.Content
@@ -78,6 +93,7 @@ public sealed class GroqProvider(
             payload?.Model ?? _options.Model,
             payload?.Usage?.PromptTokens,
             payload?.Usage?.CompletionTokens);
+        }
     }
 
     // ---- wire format (OpenAI-compatible) ---------------------------------

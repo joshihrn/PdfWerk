@@ -81,7 +81,7 @@ builder.Services.AddOpenApi(openApi => openApi.AddDocumentTransformer((document,
 
     document.Info.License = new Microsoft.OpenApi.Models.OpenApiLicense
     {
-        Name = "MIT",
+        Name = "Business Source License 1.1",
         Url = new Uri("https://github.com/joshihrn/PdfWerk/blob/main/LICENSE"),
     };
 

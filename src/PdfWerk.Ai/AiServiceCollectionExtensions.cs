@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PdfWerk.Ai.Providers;
 using PdfWerk.Core.Abstractions;
 
@@ -19,9 +20,14 @@ public static class AiServiceCollectionExtensions
     {
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
 
-        services.AddHttpClient(nameof(GeminiProvider));
-        services.AddHttpClient(nameof(GroqProvider));
-        services.AddHttpClient(nameof(OllamaProvider));
+        // Every provider gets the same retry policy: free tiers shed load routinely, and a
+        // single 503 should not become a failed request for the caller.
+        foreach (var name in new[] { nameof(GeminiProvider), nameof(GroqProvider), nameof(OllamaProvider) })
+        {
+            services.AddHttpClient(name).AddHttpMessageHandler(provider =>
+                new TransientRetryHandler(
+                    provider.GetRequiredService<ILoggerFactory>().CreateLogger($"PdfWerk.Ai.{name}")));
+        }
 
         services.AddSingleton<IAiProvider, GeminiProvider>();
         services.AddSingleton<IAiProvider, GroqProvider>();

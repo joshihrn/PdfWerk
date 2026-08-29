@@ -215,8 +215,17 @@ public sealed class PdfSummarizer(
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Output budget for one completion.
+    /// </summary>
+    /// <remarks>
+    /// Sized far above the visible answer because current Gemini and OpenAI-style reasoning
+    /// models spend output tokens on internal thinking before emitting a single character, and
+    /// that spend counts against this limit. A budget sized to the prose alone gets consumed by
+    /// reasoning and the reply is truncated mid-sentence — which is how this was found.
+    /// </remarks>
     private static int OutputTokensFor(SummarizeRequest request) =>
-        Math.Clamp(request.MaxWords * 3, 400, 4_000);
+        Math.Clamp(request.MaxWords * 12, 4_000, 24_000);
 
     private static int CountWords(string text) =>
         text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;

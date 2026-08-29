@@ -10,7 +10,7 @@
     <Product>PdfWerk</Product>
     <Company>PdfWerk</Company>
     <Authors>PdfWerk contributors</Authors>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryUrl>https://github.com/joshihrn/PdfWerk</RepositoryUrl>
   </PropertyGroup>
 </Project>

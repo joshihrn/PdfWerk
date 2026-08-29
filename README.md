@@ -211,6 +211,26 @@ workers share one bucket, so concurrency makes tests fail on each other's quota 
 their own behaviour — and those failures read as flakes. Traces, video and screenshots are kept
 for failures only.
 
+## Design system
+
+```bash
+npm --prefix web run storybook
+```
+
+Storybook on <http://localhost:6006>, covering the twelve UI primitives and the tokens they are
+built from: the neutral ramp, the accent, status colours, the type scale, spacing, elevation and
+control sizing. The token stories read their values live out of the document rather than
+restating them, so they cannot drift from `tokens.css`.
+
+The theme switcher in the toolbar sets `data-theme` on `<html>`, the same way the application
+does, so any component can be checked in light and dark without leaving the story. The
+accessibility addon runs axe against each one — worth having here because these components are
+meant to be embedded in other people's applications, where an inaccessible control becomes their
+problem rather than ours.
+
+Stories cover the primitives only. The views that compose them are covered end to end by
+Playwright against a real API, which proves more than a mocked view in Storybook would.
+
 ## Deploying
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for DNS, TLS, and the two settings that decide whether your

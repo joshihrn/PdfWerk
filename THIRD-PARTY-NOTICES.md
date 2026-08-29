@@ -37,6 +37,13 @@ copyleft and imposes only attribution.
 | pdf.js (`pdfjs-dist` 6.2) | Apache-2.0 | Rendering pages in the form designer |
 | Vite 8, `@vitejs/plugin-vue` | MIT | Build tooling, not shipped |
 | TypeScript | Apache-2.0 | Build tooling, not shipped |
+| Storybook 10 (`@storybook/vue3-vite`, `addon-docs`, `addon-a11y`) | MIT | Design-system documentation, not shipped |
+| Playwright | Apache-2.0 | End-to-end tests, not shipped |
+
+Two development-only dependencies are MPL-2.0: **axe-core**, which Storybook's accessibility
+addon runs in the browser, and **lightningcss**, which Vite uses to process CSS. Both are build
+and test tooling, neither is linked into anything this project distributes, and MPL-2.0 is
+file-level copyleft in any case — it would only ever apply to modifications of those files.
 
 The embeddable widget (`pdfwerk-embed.js`) has **no runtime dependencies at all** — it is plain
 TypeScript compiled to a self-contained bundle.
@@ -66,4 +73,11 @@ repository.
 ```bash
 dotnet list package --include-transitive
 npm --prefix web ls --omit=dev
+```
+
+For the full tree including development tooling, with every licence resolved from the packages
+themselves rather than from this document:
+
+```bash
+npx --prefix web license-checker-rseidelsohn --production=false --summary
 ```

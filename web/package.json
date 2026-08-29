@@ -8,7 +8,9 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "build:embed": "vite build --config vite.embed.config.ts",
-    "build:all": "npm run build:embed && npm run build"
+    "build:all": "npm run build:embed && npm run build",
+    "storybook": "storybook dev -p 6006",
+    "build:storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
     "pdfjs-dist": "^6.2.108",
@@ -16,9 +18,13 @@
     "vue-router": "^5.3.0"
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "^10.5.10",
+    "@storybook/addon-docs": "^10.5.10",
+    "@storybook/vue3-vite": "^10.5.10",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
+    "storybook": "^10.5.10",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vue-tsc": "^3.3.11"

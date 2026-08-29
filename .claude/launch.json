@@ -4,8 +4,27 @@
     {
       "name": "pdfwerk-api",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/PdfWerk.Api/PdfWerk.Api.csproj", "--launch-profile", "http"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/PdfWerk.Api/PdfWerk.Api.csproj",
+        "--launch-profile",
+        "http"
+      ],
       "port": 5272
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "web",
+        "run",
+        "storybook",
+        "--",
+        "--no-open"
+      ],
+      "port": 6006
     }
   ]
 }

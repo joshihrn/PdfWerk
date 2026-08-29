@@ -38,6 +38,9 @@ public enum PdfWerkAction
 
     /// <summary>Stamp text across each page.</summary>
     Watermark,
+
+    /// <summary>Apply a password and permission flags.</summary>
+    Protect,
 }
 
 /// <summary>Human-facing metadata for an action, surfaced on the landing page and in the API docs.</summary>
@@ -75,6 +78,8 @@ public static class ActionCatalog
             "Turn selected pages by 90, 180 or 270 degrees.", false),
         new(PdfWerkAction.Watermark, "watermark", "Watermark a PDF",
             "Stamp text across every page, above or beneath the content.", false),
+        new(PdfWerkAction.Protect, "protect", "Password-protect a PDF",
+            "Require a password to open, and restrict printing, copying or editing.", false),
     ];
 
     public static ActionDescriptor Get(PdfWerkAction action) =>

@@ -25,6 +25,7 @@ changes terms once you cross a revenue threshold — see [THIRD-PARTY-NOTICES.md
 | Split | `POST /v1/split` | Extract ranges, burst into single pages, or split into groups |
 | Rotate | `POST /v1/rotate` | Turn selected pages by a quarter turn |
 | Watermark | `POST /v1/watermark` | Stamp text over or beneath the content |
+| Protect | `POST /v1/protect` | Password to open, plus printing/copying/editing restrictions |
 
 Every endpoint that returns a document accepts `?delivery=download|stream|json`, so the same call
 serves a browser download, an inline preview, or a base64 envelope for server-to-server use.
@@ -176,7 +177,7 @@ the only transform between mouse and document is the display scale.
 dotnet test
 ```
 
-152 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
+163 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
 store — including a hardening suite that feeds the endpoints malformed files, PDF syntax inside
 replacement text, hostile field names and degenerate geometry. They need no network, no API key
 and no Docker: SQLite backs the key store and a fake provider stands in for the model.

@@ -36,7 +36,7 @@ public sealed class PdfInspector : IPdfInspector
             Creator: NullIfEmpty(info.Creator),
             CreatedAt: ReadCreationDate(document),
             HasAcroForm: fields.Count > 0,
-            IsEncrypted: document.SecuritySettings.IsEncrypted,
+            IsEncrypted: EncryptionProbe.IsEncrypted(pdf),
             ByteCount: pdf.Length,
             Fields: fields,
             Pages: pages);

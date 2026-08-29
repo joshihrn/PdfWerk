@@ -146,3 +146,35 @@ public sealed record WatermarkRequest
     /// </summary>
     public bool BehindContent { get; init; }
 }
+
+/// <summary>What a reader may do with a protected document.</summary>
+public sealed record PdfPermissions
+{
+    public bool AllowPrinting { get; init; } = true;
+
+    public bool AllowHighQualityPrinting { get; init; } = true;
+
+    public bool AllowModification { get; init; }
+
+    public bool AllowCopyingContent { get; init; }
+
+    public bool AllowAnnotations { get; init; }
+
+    public bool AllowFormFilling { get; init; } = true;
+
+    public bool AllowAssembly { get; init; }
+}
+
+public sealed record ProtectRequest
+{
+    /// <summary>Required to open the document. Empty means anyone can open it.</summary>
+    public string? UserPassword { get; init; }
+
+    /// <summary>
+    /// Required to change permissions. Without one, the restrictions below are trivially
+    /// removable by any tool that asks, so one is generated when it is omitted.
+    /// </summary>
+    public string? OwnerPassword { get; init; }
+
+    public PdfPermissions Permissions { get; init; } = new();
+}

@@ -18,6 +18,43 @@ public static class PageEndpoints
         MapSplit(v1);
         MapRotate(v1);
         MapWatermark(v1);
+        MapProtect(v1);
+    }
+
+    private static void MapProtect(RouteGroupBuilder v1)
+    {
+        v1.MapPost("/protect", (
+                HttpContext context,
+                ActionRunner runner,
+                IPdfProtector protector) =>
+                runner.RunAsync(context, PdfWerkAction.Protect, async (limit, ct) =>
+                {
+                    var form = await context.Request.ReadFormAsync(ct).ConfigureAwait(false);
+                    var file = form.Files["file"];
+
+                    var pdf = await RequestGuard.ReadAsync(file, limit, ct).ConfigureAwait(false);
+                    RequestGuard.RequirePageBudget(pdf, limit, file!.FileName);
+
+                    var request = RequestGuard.RequireJsonPart<ProtectRequest>(form, "request");
+                    var artifact = protector.Protect(pdf, request);
+
+                    return ApiResults.Document(
+                        artifact with { FileName = Rename(file.FileName, "protected") },
+                        ApiResults.DeliveryFrom(context.Request),
+                        new Dictionary<string, object>
+                        {
+                            ["encrypted"] = !string.IsNullOrEmpty(request.UserPassword),
+
+                            // Said plainly, because the difference matters: a user password
+                            // encrypts, permission flags only ask readers to behave.
+                            ["note"] = string.IsNullOrEmpty(request.UserPassword)
+                                ? "No user password was set, so the document opens without one. Permission flags rely on the reader honouring them and are not a security control."
+                                : "The document now requires the user password to open. Permission flags rely on the reader honouring them and are not a security control.",
+                        });
+                }))
+            .WithName("Protect")
+            .WithSummary("Set a password to open the document, and restrict printing, copying or editing.")
+            .DisableAntiforgery();
     }
 
     private static void MapSplit(RouteGroupBuilder v1)

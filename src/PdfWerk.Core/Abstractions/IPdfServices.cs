@@ -82,3 +82,9 @@ public interface IPdfWatermarker
 {
     PdfArtifact Apply(byte[] pdf, WatermarkRequest request);
 }
+
+/// <summary>Applies password protection and permission flags.</summary>
+public interface IPdfProtector
+{
+    PdfArtifact Protect(byte[] pdf, ProtectRequest request);
+}

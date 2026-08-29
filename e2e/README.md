@@ -3,11 +3,17 @@
 Two suites against a real, running PdfWerk:
 
 - **`tests/api.spec.ts`** — the HTTP API on its own terms. Every operation, the error contract
-  (422 for a corrupt file, 400 for a bad request, 429 with `Retry-After` at the ceiling), tier
-  limits, key issue and revocation, and the `X-RateLimit-*` headers integrators depend on.
+  (422 for a document that cannot be read, 400 for everything else the caller got wrong, 429
+  with `Retry-After` at the ceiling), tier limits, key issue and revocation, the `X-RateLimit-*`
+  headers integrators depend on, and the CORS policy the embeddable widget relies on to work
+  from someone else's origin.
 - **`tests/ui.spec.ts`** — the browser. Written against what a person sees — headings, labels,
   button text — rather than CSS classes, so a restyle does not break the suite but a broken
   interface does. The form designer is the exception: coordinates are the thing under test.
+
+  Beyond the feature walkthroughs it covers the embeddable widget through the demo page the
+  server ships, an axe audit of every page in light and dark, keyboard operation, behaviour at
+  the rate limit, error recovery, and layout at 375px.
 
 ## Running
 

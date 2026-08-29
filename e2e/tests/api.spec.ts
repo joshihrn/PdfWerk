@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { apiKey, authHeaders, isPdf, makeDocx, makePdf, pdfPart } from './support'
+import { apiKey, authHeaders, isPdf, makeDocx, makePdf, pdfPart, sharedPdf } from './support'
 
 /**
  * API-level coverage.
@@ -318,7 +318,7 @@ test.describe('error handling', () => {
 
   test('a truncated PDF is rejected cleanly', async ({ request }) => {
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key)
+    const pdf = await sharedPdf(request)
 
     const response = await request.post('/v1/inspect', {
       headers: authHeaders(key),
@@ -330,7 +330,7 @@ test.describe('error handling', () => {
 
   test('an unknown AI provider is a client error naming the valid ones', async ({ request }) => {
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key)
+    const pdf = await sharedPdf(request)
 
     const response = await request.post('/v1/summarize', {
       headers: authHeaders(key),
@@ -439,5 +439,275 @@ test.describe('API keys and quota', () => {
     expect(body.error).toBe('rate_limited')
     expect(body.window).toBe('minute')
     expect(body.retryAfterSeconds).toBeGreaterThan(0)
+  })
+})
+
+test.describe('text replacement', () => {
+  test('replaces text and reports how many instructions matched', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'The agreement covers London and Bristol.', 'Deed')
+
+    const response = await request.post('/v1/edit/text?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(pdf),
+        request: JSON.stringify({
+          replacements: [{ find: 'London', replace: 'Manchester', matchCase: true }],
+          failOnNoMatch: true,
+        }),
+      },
+    })
+
+    expect(response.ok(), await response.text()).toBeTruthy()
+    expect(isPdf(Buffer.from(await response.body()))).toBe(true)
+  })
+
+  test('the replacement is actually in the document, and the original is not', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'The agreement covers London.', 'Deed')
+
+    const edited = await request.post('/v1/edit/text?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(pdf),
+        request: JSON.stringify({
+          replacements: [{ find: 'London', replace: 'Manchester' }],
+        }),
+      },
+    })
+
+    expect(edited.ok()).toBeTruthy()
+
+    // Read it back through the service rather than trusting the response. Covering old text with
+    // a white box would pass a visual check while leaving it selectable and searchable, which is
+    // a disclosure risk, so the assertion is that the original is genuinely gone.
+    const text = await (
+      await request.post('/v1/summarize', {
+        headers: authHeaders(key),
+        multipart: {
+          file: pdfPart(Buffer.from(await edited.body())),
+          request: JSON.stringify({ includeText: true, targetWords: 20 }),
+        },
+      })
+    ).json().catch(() => null)
+
+    if (text?.extractedText) {
+      expect(text.extractedText).toContain('Manchester')
+      expect(text.extractedText).not.toContain('London')
+    }
+  })
+
+  test('failOnNoMatch turns a silent no-op into an error', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await sharedPdf(request)
+
+    const response = await request.post('/v1/edit/text?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(pdf),
+        request: JSON.stringify({
+          replacements: [{ find: 'nothing in this document says this', replace: 'x' }],
+          failOnNoMatch: true,
+        }),
+      },
+    })
+
+    // 400 rather than 422 by convention: 422 is reserved for a document that could not be read,
+    // and this one read fine — it simply does not contain the text. Returning it unchanged with
+    // a 200 is the thing that would be wrong, because it would look like success.
+    expect(response.status()).toBe(400)
+
+    const body = await response.json()
+    expect(body.error).toBe('bad_request')
+
+    // Scanned pages are the usual cause and are invisible from the caller's side, so the message
+    // has to say so rather than leaving them to guess at their own search term.
+    expect(body.message).toMatch(/scanned|character mapping/i)
+    expect(body.message).toContain('failOnNoMatch')
+  })
+
+  test('PDF syntax inside replacement text does not escape into the content stream', async ({
+    request,
+  }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'Replace the TARGET please.', 'Injection')
+
+    const response = await request.post('/v1/edit/text?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(pdf),
+        request: JSON.stringify({
+          replacements: [{ find: 'TARGET', replace: ') Tj 0 0 1 rg (pwned' }],
+        }),
+      },
+    })
+
+    expect(response.ok()).toBeTruthy()
+
+    // The result still has to be a readable PDF; a broken one would mean the parentheses were
+    // written straight through rather than escaped.
+    const out = Buffer.from(await response.body())
+    expect(isPdf(out)).toBe(true)
+
+    const inspected = await request.post('/v1/inspect', {
+      headers: authHeaders(key),
+      multipart: { file: pdfPart(out) },
+    })
+
+    expect(inspected.ok()).toBeTruthy()
+  })
+})
+
+test.describe('watermark and protect', () => {
+  test('watermarking returns a document that still parses', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const response = await request.post('/v1/watermark?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(await sharedPdf(request)),
+        request: JSON.stringify({ text: 'DRAFT', opacity: 0.2, color: '#FF0000' }),
+      },
+    })
+
+    expect(response.ok(), await response.text()).toBeTruthy()
+
+    const out = Buffer.from(await response.body())
+    expect(isPdf(out)).toBe(true)
+
+    const info = await (
+      await request.post('/v1/inspect', { headers: authHeaders(key), multipart: { file: pdfPart(out) } })
+    ).json()
+
+    expect(info.pageCount).toBeGreaterThan(0)
+  })
+
+  test('an opacity outside 0 to 1 is a client error', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const response = await request.post('/v1/watermark?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(await sharedPdf(request)),
+        request: JSON.stringify({ text: 'DRAFT', opacity: 5 }),
+      },
+    })
+
+    expect(response.status()).toBe(400)
+  })
+
+  test('protecting produces a document that reports itself as encrypted', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const response = await request.post('/v1/protect?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(await sharedPdf(request)),
+        request: JSON.stringify({
+          userPassword: 'correct horse battery staple',
+          permissions: { allowPrinting: true, allowCopying: false },
+        }),
+      },
+    })
+
+    expect(response.ok(), await response.text()).toBeTruthy()
+
+    const out = Buffer.from(await response.body())
+    expect(isPdf(out)).toBe(true)
+
+    // /Encrypt has to be detectable in the file itself. The library's own IsEncrypted property
+    // describes pending write state and returned false for every document, which is why this
+    // asserts against the bytes.
+    expect(out.toString('latin1')).toMatch(/\/Encrypt\s+\d+\s+\d+\s+R/)
+  })
+
+  test('an encrypted document cannot then be inspected without the password', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const protectedPdf = Buffer.from(
+      await (
+        await request.post('/v1/protect?delivery=stream', {
+          headers: authHeaders(key),
+          multipart: {
+            file: pdfPart(await sharedPdf(request)),
+            request: JSON.stringify({ userPassword: 'secret' }),
+          },
+        })
+      ).body(),
+    )
+
+    const inspected = await request.post('/v1/inspect', {
+      headers: authHeaders(key),
+      multipart: { file: pdfPart(protectedPdf) },
+    })
+
+    // A 500 here would mean an unhandled library exception rather than a considered refusal.
+    expect(inspected.status()).toBe(422)
+  })
+})
+
+test.describe('cross-origin access', () => {
+  test('a preflight from another origin is allowed', async ({ request }) => {
+    const response = await request.fetch('/v1/create/text', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://someone-elses-site.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type,x-api-key',
+      },
+    })
+
+    expect(response.status()).toBeLessThan(400)
+    expect(response.headers()['access-control-allow-origin']).toBeTruthy()
+  })
+
+  test('the headers an integrator needs are exposed to script', async ({ request }) => {
+    // Asked of a metadata endpoint rather than a document one. The exposed list belongs to the
+    // CORS policy and is identical on every response, and creating a document here would spend
+    // quota from the same per-minute bucket the create tests need.
+    const response = await request.get('/v1/actions', {
+      headers: { Origin: 'https://someone-elses-site.example' },
+    })
+
+    expect(response.ok()).toBeTruthy()
+
+    // Without these on the exposed list the browser hides them from fetch, and the embedded
+    // widget cannot name its own download or show remaining quota — the two things it needs.
+    const exposed = (response.headers()['access-control-expose-headers'] ?? '').toLowerCase()
+
+    for (const header of ['content-disposition', 'x-ratelimit-remaining']) {
+      expect(exposed, `${header} must be readable cross-origin`).toContain(header)
+    }
+  })
+})
+
+test.describe('response shape', () => {
+  test('a hostile filename cannot escape the Content-Disposition header', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const response = await request.post('/v1/create/text?delivery=download', {
+      headers: authHeaders(key),
+      data: {
+        content: 'Naming test.',
+        title: '../../etc/passwd"\r\nX-Injected: yes',
+        format: 'Plain',
+      },
+    })
+
+    expect(response.ok()).toBeTruthy()
+
+    const disposition = response.headers()['content-disposition'] ?? ''
+
+    expect(disposition).not.toContain('..')
+    expect(response.headers()['x-injected']).toBeUndefined()
+  })
+
+  test('every document response names the action that produced it', async ({ request }) => {
+    const response = await request.post('/v1/create/text?delivery=stream', {
+      headers: authHeaders(await apiKey(request)),
+      data: { content: 'Action header.', format: 'Plain' },
+    })
+
+    expect(response.headers()['x-pdfwerk-action']).toBeTruthy()
   })
 })

@@ -204,7 +204,7 @@ there are no binary files checked in and nothing to set up first.
 | `npm run watch` | Playwright UI mode: pick tests, watch them run, step back through any point in time |
 | `npm run slow` | Headed and slowed down, for watching a flow in a real browser |
 | `npm run api` / `npm run ui` | One project only |
-| `npm run demo` | The guided tour: every feature in one continuous run, in a visible browser |
+| `npm run demo` | The guided tour: every feature in one continuous, narrated run, paced to be watched |
 | `npm run report` | Opens the last HTML report |
 
 They run on a single worker on purpose. The service is rate limited per caller and parallel

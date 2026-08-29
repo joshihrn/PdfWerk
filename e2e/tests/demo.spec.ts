@@ -16,17 +16,91 @@ import { apiKey, configuredProviders, makeDocx, makePdf, multiPagePdf, sharedPdf
  * that produce a document save the real file through the browser's download path — which is
  * also the only place anything exercises downloading rather than previewing.
  *
- *   npm run demo            headed and slowed down, for watching
+ *   npm run demo            headed and paced for watching
  *   npm run demo:headless   same steps, no window, for CI
+ *
+ * Paced deliberately. Every step puts a caption on screen saying what is about to happen, waits
+ * long enough to read it, and types into the short fields a character at a time. `DEMO_PACE`
+ * scales all of it — `DEMO_PACE=2` for presenting to a room, `DEMO_PACE=0` to strip the waits
+ * out entirely when it is being used as a smoke test.
+ *
+ * The explicit waits here would be a bad smell in the other two suites, where waiting on a clock
+ * instead of on a condition is how flakiness gets in. They are the point of this one: nothing is
+ * waiting for the application, it is waiting for the person watching.
  *
  * Run it with `--project=demo`; it is excluded from the default suite so that `npm test` stays
  * about catching regressions rather than re-proving the happy path a third time.
  */
 
+/** Scales every pause. 0 removes them, 2 doubles them. */
+const PACE = Number(process.env.DEMO_PACE ?? '1')
+
+/** Long enough to read a caption of a dozen words, at the default pace. */
+const READ = 2_200
+
+/** A held moment after something appears, so the eye can land on it. */
+const BEAT = 900
+
+const CAPTION_ID = 'pdfwerk-demo-caption'
+
 // The package is ESM, so __dirname does not exist here.
 const OUTPUT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'demo-output')
 
 let step = 0
+
+async function pause(page: Page, ms: number) {
+  if (PACE > 0) await page.waitForTimeout(ms * PACE)
+}
+
+/**
+ * Puts a caption on screen and waits for it to be read.
+ *
+ * Re-injected every call because a navigation wipes it. It is inert — `pointer-events: none`,
+ * `aria-hidden`, and worded so it never collides with anything the tour asserts on — so it
+ * narrates without becoming part of what is being demonstrated.
+ */
+async function narrate(page: Page, heading: string, detail: string) {
+  await page.evaluate(
+    ({ id, heading, detail }) => {
+      let host = document.getElementById(id)
+
+      if (!host) {
+        host = document.createElement('div')
+        host.id = id
+        host.setAttribute('aria-hidden', 'true')
+        host.style.cssText = [
+          'position:fixed', 'inset:auto 0 0 0', 'z-index:2147483647',
+          'padding:18px 28px', 'pointer-events:none',
+          'font:15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
+          'color:#fff', 'background:linear-gradient(transparent,rgba(11,14,21,.92) 38%)',
+          'transition:opacity .25s ease',
+        ].join(';')
+        document.body.appendChild(host)
+      }
+
+      host.innerHTML =
+        `<div style="max-width:1100px;margin:0 auto">
+           <div style="font-weight:600;font-size:17px;letter-spacing:-.01em">${heading}</div>
+           <div style="opacity:.75;margin-top:3px">${detail}</div>
+         </div>`
+    },
+    { id: CAPTION_ID, heading, detail },
+  )
+
+  await pause(page, READ)
+}
+
+/**
+ * Types visibly, the way a person would, rather than pasting the value in one go.
+ *
+ * Cleared first: unlike fill(), pressSequentially appends. A field carrying a default — the page
+ * range starts at "all" — would otherwise end up holding "all1-2" and be rejected as malformed.
+ */
+async function typeInto(locator: ReturnType<Page['getByLabel']>, text: string) {
+  await locator.fill('')
+  await locator.click()
+  await locator.pressSequentially(text, { delay: PACE > 0 ? 45 * PACE : 0 })
+}
 
 /**
  * Numbered so the folder reads in the order the tour ran, whatever the filesystem thinks.
@@ -39,7 +113,13 @@ let step = 0
 async function capture(page: Page, name: string) {
   step += 1
 
-  const unpin = await page.addStyleTag({ content: '.app-nav { position: static !important; }' })
+  // The caption goes too. It belongs in the recording, where it sits at the foot of the window
+  // and narrates; in a full-page capture it composites across the middle of the page like any
+  // other fixed element, and these images are meant to be clean product shots.
+  const unpin = await page.addStyleTag({
+    content: `.app-nav { position: static !important; } #${CAPTION_ID} { display: none !important; }`,
+  })
+
   const file = path.join(OUTPUT, `${String(step).padStart(2, '0')}-${name}.png`)
 
   await page.screenshot({ path: file, fullPage: true })
@@ -94,6 +174,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
   await test.step('The landing page explains what the service does', async () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'PDF operations as an HTTP API' })).toBeVisible()
+    await narrate(page, 'PdfWerk', 'Eleven PDF operations, each one an HTTP endpoint. Here is the catalogue.')
 
     // The catalogue is fetched from the running API, so this is already proof of a live server.
     await expect(page.locator('.op').first()).toBeVisible()
@@ -102,6 +183,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('A free API key raises the caller from anonymous to the Free tier', async () => {
     await page.goto('/api')
+    await narrate(page, 'A free key, no signup', 'One request raises you from anonymous to the Free tier. No account, no email.')
     await expect(page.getByText('saved in this browser')).toBeVisible()
     await expect(page.getByRole('link', { name: 'Free' })).toBeVisible()
 
@@ -112,13 +194,15 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Create a PDF from Markdown', async () => {
     await page.goto('/create')
+    await narrate(page, 'Create a PDF from text', 'Write Markdown, get a paginated document back.')
     await page.getByLabel('Document body').fill(
       '# Quarterly report\n\n' +
         'Revenue rose **twelve per cent** across all regions.\n\n' +
         '## Outlook\n\n' +
         'The board expects the trend to continue into the next quarter.',
     )
-    await page.getByLabel('Title').fill('Quarterly report')
+    await typeInto(page.getByLabel('Title'), 'Quarterly report')
+    await pause(page, BEAT)
     await page.getByRole('button', { name: 'Preview' }).click()
 
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -129,6 +213,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Convert a Word document', async () => {
     await page.goto('/word')
+    await narrate(page, 'Word to PDF', 'A .docx goes in. LibreOffice converts it where installed, a managed converter otherwise.')
     await page.setInputFiles('input[type="file"]', {
       name: 'report.docx',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -151,14 +236,16 @@ test('a guided tour of every feature', async ({ page, request }) => {
     )
 
     await page.goto('/edit')
+    await narrate(page, 'Change the words in a finished PDF', 'The old text is removed, not covered over, so it stops being searchable too.')
     await page.setInputFiles('input[type="file"]', {
       name: 'lease.pdf',
       mimeType: 'application/pdf',
       buffer: pdf,
     })
 
-    await page.getByLabel('Find').fill('London')
-    await page.getByLabel('Replace with').fill('Manchester')
+    await typeInto(page.getByLabel('Find'), 'London')
+    await typeInto(page.getByLabel('Replace with'), 'Manchester')
+    await pause(page, BEAT)
     await page.getByRole('button', { name: 'Apply & preview' }).click()
 
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -169,6 +256,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Draw form fields onto a page', async () => {
     await page.goto('/forms')
+    await narrate(page, 'Draw form fields onto the page', 'Click where a field belongs. Coordinates are sent in PDF points, exactly as placed.')
     await page.setInputFiles('input[type="file"]', {
       name: 'contract.pdf',
       mimeType: 'application/pdf',
@@ -176,17 +264,20 @@ test('a guided tour of every feature', async ({ page, request }) => {
     })
 
     await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 60_000 })
+    await pause(page, BEAT)
 
     const canvas = page.locator('.designer canvas')
     const box = (await canvas.boundingBox())!
 
     await canvas.click({ position: { x: box.width * 0.15, y: box.height * 0.45 } })
-    await page.getByLabel('Name').fill('clientName')
+    await typeInto(page.getByLabel('Name'), 'clientName')
     await page.getByRole('button', { name: 'Done' }).click()
+    await pause(page, BEAT)
 
     await canvas.click({ position: { x: box.width * 0.15, y: box.height * 0.55 } })
-    await page.getByLabel('Name').fill('signedOn')
+    await typeInto(page.getByLabel('Name'), 'signedOn')
     await page.getByRole('button', { name: 'Done' }).click()
+    await pause(page, BEAT)
 
     await expect(page.locator('.field-box')).toHaveCount(2)
     await expect(page.getByText('2 field(s)')).toBeVisible()
@@ -202,12 +293,14 @@ test('a guided tour of every feature', async ({ page, request }) => {
   await test.step('Fill those fields and flatten them into the page', async () => {
     // Uploads the document produced by the previous step, so the tour genuinely builds on itself.
     await page.goto('/forms')
+    await narrate(page, 'Now fill the form that was just drawn', 'This uploads the document from the previous step. The tour builds on itself.')
     await page.setInputFiles('input[type="file"]', path.join(OUTPUT, 'with-form-fields.pdf'))
 
     await page.getByRole('tab', { name: 'Fill values' }).click()
-    await page.getByLabel('clientName').fill('Ada Lovelace')
-    await page.getByLabel('signedOn').fill('29 August 2026')
+    await typeInto(page.getByLabel('clientName'), 'Ada Lovelace')
+    await typeInto(page.getByLabel('signedOn'), '29 August 2026')
     await page.getByLabel('Flatten').check()
+    await pause(page, BEAT)
 
     await page.getByRole('button', { name: 'Fill & preview' }).click()
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -221,6 +314,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
     const second = await makePdf(request, key, 'The second document in the bundle.', 'Second')
 
     await page.goto('/merge')
+    await narrate(page, 'Merge, in the order you choose', 'Sequence is the whole point, so the list can be reordered before it is sent.')
     await page.setInputFiles('input[type="file"]', [
       { name: 'first.pdf', mimeType: 'application/pdf', buffer: first },
       { name: 'second.pdf', mimeType: 'application/pdf', buffer: second },
@@ -245,7 +339,9 @@ test('a guided tour of every feature', async ({ page, request }) => {
       buffer: await multiPagePdf(request),
     })
 
-    await page.getByLabel('Pages').fill('1-2')
+    await narrate(page, 'Take just the pages you want', 'Ranges understand 1-3, odd, even, open-ended tails, and all.')
+    await typeInto(page.getByLabel('Pages'), '1-2')
+    await pause(page, BEAT)
     await page.getByRole('button', { name: 'Apply & preview' }).click()
 
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -261,7 +357,9 @@ test('a guided tour of every feature', async ({ page, request }) => {
       buffer: await multiPagePdf(request),
     })
 
-    await page.getByLabel('Pages').fill('2')
+    await narrate(page, 'Rotate a single page', 'Only the pages named turn. The rest are left exactly as they were.')
+    await typeInto(page.getByLabel('Pages'), '2')
+    await pause(page, BEAT)
     await page.getByRole('button', { name: 'Apply & preview' }).click()
 
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -277,7 +375,9 @@ test('a guided tour of every feature', async ({ page, request }) => {
       buffer: await multiPagePdf(request),
     })
 
-    await page.getByLabel('Text', { exact: true }).fill('DRAFT')
+    await narrate(page, 'Stamp a watermark', 'Drawn beneath the content by default, so the document stays readable.')
+    await typeInto(page.getByLabel('Text', { exact: true }), 'DRAFT')
+    await pause(page, BEAT)
     await page.getByRole('button', { name: 'Apply & preview' }).click()
 
     await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 60_000 })
@@ -295,7 +395,9 @@ test('a guided tour of every feature', async ({ page, request }) => {
       buffer: await sharedPdf(request),
     })
 
-    await page.getByLabel('Password to open').fill('correct horse battery staple')
+    await narrate(page, 'Encrypt with a password', 'No preview is offered here, because a browser cannot render an encrypted PDF.')
+    await typeInto(page.getByLabel('Password to open'), 'correct horse battery staple')
+    await pause(page, BEAT)
 
     // No preview is offered, and that is deliberate: a browser cannot render an encrypted PDF,
     // so the interface says so rather than showing an empty frame.
@@ -307,6 +409,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Summarise a document with an AI model', async () => {
     await page.goto('/summarize')
+    await narrate(page, 'Summarise with a model', 'Gemini, Groq or a local Ollama, whichever is configured. Nothing is sent without one.')
     await page.setInputFiles('input[type="file"]', {
       name: 'report.pdf',
       mimeType: 'application/pdf',
@@ -329,6 +432,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Inspect a document and read its structure back', async () => {
     await page.goto('/inspect')
+    await narrate(page, 'Read a document back', 'The fields designed a few steps ago come back by name. That round trip is the whole game.')
     await page.setInputFiles('input[type="file"]', path.join(OUTPUT, 'with-form-fields.pdf'))
     await page.getByRole('button', { name: 'Inspect' }).click()
 
@@ -341,6 +445,7 @@ test('a guided tour of every feature', async ({ page, request }) => {
 
   await test.step('Drop the same tools into someone else\'s page with one script tag', async () => {
     await page.goto('/embed-demo.html')
+    await narrate(page, 'The same tools, dropped into another page', 'One script tag, one mount call. Rendered in a shadow root so nothing leaks either way.')
 
     for (const widget of ['Create a PDF', 'Merge PDFs', 'Inspect a PDF', 'Fill a PDF form']) {
       await expect(page.getByText(widget, { exact: true }).first()).toBeVisible()
@@ -354,6 +459,9 @@ test('a guided tour of every feature', async ({ page, request }) => {
     await expect(page.getByText(/create →/)).toBeVisible({ timeout: 60_000 })
     await capture(page, 'embed-widget')
   })
+
+  await narrate(page, 'That is the whole product', 'Every screenshot and document from this run is waiting in demo-output/.')
+  await pause(page, BEAT)
 
   const produced = fs.readdirSync(OUTPUT)
   console.log(`\nTour complete. ${produced.length} files in ${OUTPUT}`)

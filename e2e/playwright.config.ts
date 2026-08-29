@@ -84,7 +84,16 @@ export default defineConfig({
         video: 'on',
         trace: 'on',
         screenshot: 'off',
-        actionTimeout: 30_000,
+        actionTimeout: 60_000,
+
+        /**
+         * Slows every action so clicks and navigations can be followed by eye. DEMO_PACE scales
+         * it alongside the caption timings in the spec, and 0 turns both off — which is what to
+         * use if the tour is ever run as a smoke test rather than watched.
+         */
+        launchOptions: {
+          slowMo: Math.round(220 * Number(process.env.DEMO_PACE ?? '1')),
+        },
       },
     },
   ],

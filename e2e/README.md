@@ -30,6 +30,25 @@ Two suites against a real, running PdfWerk:
   npm run demo:headless   # same steps, no window
   ```
 
+  It is **paced to be followed**, not to finish quickly. Each step puts a caption on screen
+  saying what is about to happen and waits long enough to read it, actions are slowed so clicks
+  and navigations can be seen, and short fields are typed a character at a time. About three
+  minutes end to end.
+
+  `DEMO_PACE` scales all of it. `DEMO_PACE=2` for presenting to a room, `DEMO_PACE=0` to strip
+  the waits out entirely if it is ever wanted as a smoke test:
+
+  ```bash
+  DEMO_PACE=2 npx playwright test --project=demo --headed
+  ```
+
+  The whole run is recorded. `npm run report` plays it back inline, or the file is at
+  `.artifacts/demo-a-guided-tour-of-every-feature-demo/video.webm`.
+
+  The explicit waits in this file would be a bad smell in the other two suites, where waiting on
+  a clock rather than a condition is how flakiness gets in. Here they are the point: nothing is
+  waiting for the application, it is waiting for the person watching.
+
   It is excluded from `npm test` on purpose: that run is for catching regressions, and the tour
   walks the same happy paths a third time.
 

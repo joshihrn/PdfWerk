@@ -2,35 +2,74 @@
 import { computed, ref } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
 import ResultPane from '../components/ResultPane.vue'
+import {
+  PwBadge,
+  PwButton,
+  PwCard,
+  PwCheckbox,
+  PwField,
+  PwInput,
+  PwPageHeader,
+  PwSegmented,
+  PwSelect,
+} from '../components/ui'
 import { api, saveBlob, type Delivery, type DocumentResult, type PdfInfo } from '../api/client'
 
-type Mode = 'split' | 'rotate' | 'watermark'
-
-const mode = ref<Mode>('split')
+const mode = ref('split')
 const files = ref<File[]>([])
 const info = ref<PdfInfo | null>(null)
 
 const pages = ref('all')
-const splitMode = ref<'Extract' | 'Burst' | 'Groups'>('Extract')
+const splitMode = ref('Extract')
 const degrees = ref(90)
 const absolute = ref(false)
 
 const text = ref('CONFIDENTIAL')
 const opacity = ref(0.15)
 const colour = ref('#FF0000')
-const position = ref<'Diagonal' | 'Horizontal' | 'Vertical'>('Diagonal')
+const position = ref('Diagonal')
 const behind = ref(false)
+
+const userPassword = ref('')
+const allowPrinting = ref(true)
+const allowCopying = ref(false)
+const allowModification = ref(false)
 
 const result = ref<DocumentResult | null>(null)
 const error = ref<unknown>(null)
 const busy = ref(false)
 
+const ready = computed(() => files.value.length > 0)
 const pageCount = computed(() => info.value?.pageCount ?? 0)
 
-// A zip cannot be previewed, so the preview button is hidden when one is expected.
-const producesArchive = computed(
-  () => mode.value === 'split' && splitMode.value !== 'Extract' && pageCount.value > 1,
+/** A zip and an encrypted document both defeat the inline preview. */
+const noPreview = computed(
+  () =>
+    (mode.value === 'split' && splitMode.value !== 'Extract' && pageCount.value > 1) ||
+    (mode.value === 'protect' && userPassword.value.length > 0),
 )
+
+const modes = [
+  { value: 'split', label: 'Split' },
+  { value: 'rotate', label: 'Rotate' },
+  { value: 'watermark', label: 'Watermark' },
+  { value: 'protect', label: 'Protect' },
+]
+
+const splitModes = [
+  { value: 'Extract', label: 'Extract — one document with the selected pages' },
+  { value: 'Burst', label: 'Burst — one document per page' },
+  { value: 'Groups', label: 'Groups — one per comma-separated range' },
+]
+
+const rotations = [
+  { value: 90, label: '90° clockwise' },
+  { value: 180, label: '180°' },
+  { value: 270, label: '270° clockwise' },
+  { value: -90, label: '90° anticlockwise' },
+]
+
+const positions = ['Diagonal', 'Horizontal', 'Vertical'].map((p) => ({ value: p, label: p }))
 
 async function onFiles() {
   info.value = null
@@ -59,8 +98,12 @@ async function run(delivery: Delivery) {
     if (mode.value === 'split') {
       produced = await api.split(file, { pages: pages.value, mode: splitMode.value }, delivery)
     } else if (mode.value === 'rotate') {
-      produced = await api.rotate(file, { pages: pages.value, degrees: degrees.value, absolute: absolute.value }, delivery)
-    } else {
+      produced = await api.rotate(
+        file,
+        { pages: pages.value, degrees: degrees.value, absolute: absolute.value },
+        delivery,
+      )
+    } else if (mode.value === 'watermark') {
       produced = await api.watermark(
         file,
         {
@@ -73,11 +116,24 @@ async function run(delivery: Delivery) {
         },
         delivery,
       )
+    } else {
+      produced = await api.protect(
+        file,
+        {
+          userPassword: userPassword.value || null,
+          permissions: {
+            allowPrinting: allowPrinting.value,
+            allowCopyingContent: allowCopying.value,
+            allowModification: allowModification.value,
+          },
+        },
+        delivery,
+      )
     }
 
     result.value = produced
 
-    // A zip always comes back as a download regardless of what was asked for.
+    // A zip always downloads, whatever was asked for.
     if (delivery === 'download' || produced.blob.type === 'application/zip') {
       saveBlob(produced.blob, produced.fileName)
     }
@@ -92,100 +148,171 @@ async function run(delivery: Delivery) {
 
 <template>
   <div>
-    <h1>Page tools</h1>
-    <p class="muted">
-      Pull out ranges, burst into single pages, rotate, or stamp a watermark. Page selections take
-      the usual shorthand: <code>1-3,7</code>, <code>5-</code>, <code>odd</code>, <code>all</code>.
-    </p>
-
-    <div class="panel">
-      <FileDrop v-model="files" @update:model-value="onFiles" />
-      <p v-if="info" class="small muted" style="margin: 10px 0 0">
-        {{ info.pageCount }} page(s) loaded.
-      </p>
-    </div>
-
-    <div class="btns" style="margin-bottom: 14px">
-      <button class="btn" :class="{ primary: mode === 'split' }" @click="mode = 'split'">Split</button>
-      <button class="btn" :class="{ primary: mode === 'rotate' }" @click="mode = 'rotate'">Rotate</button>
-      <button class="btn" :class="{ primary: mode === 'watermark' }" @click="mode = 'watermark'">Watermark</button>
-    </div>
+    <PwPageHeader
+      title="Page tools"
+      description="Pull out ranges, burst into single pages, rotate, watermark, or lock a document with a password."
+    >
+      <template #actions>
+        <PwSegmented v-model="mode" :options="modes" label="Page operation" />
+      </template>
+    </PwPageHeader>
 
     <div class="split">
-      <div class="panel" style="margin: 0">
-        <label for="pages">Pages</label>
-        <input id="pages" v-model="pages" type="text" placeholder="all, 1-3,7, odd, 5-" />
+      <div class="stack-4">
+        <PwCard title="Document">
+          <FileDrop v-model="files" @update:model-value="onFiles" />
 
-        <template v-if="mode === 'split'">
-          <label for="splitmode" style="margin-top: 12px">How to split</label>
-          <select id="splitmode" v-model="splitMode">
-            <option value="Extract">Extract — one document with the selected pages</option>
-            <option value="Burst">Burst — one document per page</option>
-            <option value="Groups">Groups — one document per comma-separated range</option>
-          </select>
-          <p v-if="producesArchive" class="small muted" style="margin-top: 10px">
-            Several documents are returned together as a zip.
-          </p>
-        </template>
+          <template v-if="info" #footer>
+            <PwBadge tone="neutral">{{ info.pageCount }} page(s)</PwBadge>
+            <PwBadge v-if="info.hasAcroForm" tone="accent">{{ info.fields.length }} field(s)</PwBadge>
+            <PwBadge v-if="info.isEncrypted" tone="warn">encrypted</PwBadge>
+          </template>
+        </PwCard>
 
-        <template v-else-if="mode === 'rotate'">
-          <label for="degrees" style="margin-top: 12px">Rotation</label>
-          <select id="degrees" v-model.number="degrees">
-            <option :value="90">90° clockwise</option>
-            <option :value="180">180°</option>
-            <option :value="270">270° clockwise</option>
-            <option :value="-90">90° anticlockwise</option>
-          </select>
+        <PwCard :title="modes.find((m) => m.value === mode)?.label">
+          <div class="stack-4">
+            <PwField
+              v-if="mode !== 'protect'"
+              v-slot="{ id }"
+              label="Pages"
+              help="1-3,7 · 5- · -3 · odd · even · first · last · all"
+            >
+              <PwInput :id="id" v-model="pages" mono placeholder="all" />
+            </PwField>
 
-          <label style="margin-top: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer">
-            <input v-model="absolute" type="checkbox" style="width: auto" />
-            <span>Replace any existing rotation instead of adding to it</span>
-          </label>
-        </template>
+            <!-- split -->
+            <template v-if="mode === 'split'">
+              <PwField v-slot="{ id }" label="How to split">
+                <PwSelect :id="id" v-model="splitMode" :options="splitModes" />
+              </PwField>
+            </template>
 
-        <template v-else>
-          <label for="wtext" style="margin-top: 12px">Text</label>
-          <input id="wtext" v-model="text" type="text" maxlength="200" />
+            <!-- rotate -->
+            <template v-else-if="mode === 'rotate'">
+              <PwField v-slot="{ id }" label="Rotation">
+                <PwSelect :id="id" v-model="degrees" :options="rotations" />
+              </PwField>
 
-          <div class="row" style="margin-top: 12px">
-            <div>
-              <label for="wpos">Orientation</label>
-              <select id="wpos" v-model="position">
-                <option>Diagonal</option><option>Horizontal</option><option>Vertical</option>
-              </select>
-            </div>
-            <div>
-              <label for="wcol">Colour</label>
-              <input id="wcol" v-model="colour" type="text" placeholder="#FF0000" />
-            </div>
-            <div>
-              <label for="wop">Opacity — {{ opacity.toFixed(2) }}</label>
-              <input id="wop" v-model.number="opacity" type="range" min="0.02" max="1" step="0.01" />
-            </div>
+              <PwCheckbox
+                v-model="absolute"
+                label="Replace existing rotation"
+                help="Otherwise this is added to whatever the page already has"
+              />
+            </template>
+
+            <!-- watermark -->
+            <template v-else-if="mode === 'watermark'">
+              <PwField v-slot="{ id }" label="Text">
+                <PwInput :id="id" v-model="text" :maxlength="200" />
+              </PwField>
+
+              <div class="cols-2">
+                <PwField v-slot="{ id }" label="Orientation">
+                  <PwSelect :id="id" v-model="position" :options="positions" />
+                </PwField>
+
+                <PwField v-slot="{ id }" label="Colour">
+                  <div class="row">
+                    <input v-model="colour" type="color" class="swatch" aria-hidden="true" />
+                    <PwInput :id="id" v-model="colour" mono placeholder="#FF0000" />
+                  </div>
+                </PwField>
+              </div>
+
+              <PwField v-slot="{ id }" :label="`Opacity — ${opacity.toFixed(2)}`">
+                <input
+                  :id="id"
+                  v-model.number="opacity"
+                  type="range"
+                  min="0.02"
+                  max="1"
+                  step="0.01"
+                  class="range"
+                />
+              </PwField>
+
+              <PwCheckbox
+                v-model="behind"
+                label="Draw beneath the content"
+                help="Keeps body text fully legible"
+              />
+            </template>
+
+            <!-- protect -->
+            <template v-else>
+              <PwField
+                v-slot="{ id, describedBy }"
+                label="Password to open"
+                help="Leave blank to set permissions only. Only a password actually encrypts."
+              >
+                <PwInput
+                  :id="id"
+                  v-model="userPassword"
+                  type="password"
+                  :described-by="describedBy"
+                  placeholder="Optional"
+                />
+              </PwField>
+
+              <div class="stack">
+                <PwCheckbox v-model="allowPrinting" label="Allow printing" />
+                <PwCheckbox v-model="allowCopying" label="Allow copying text" />
+                <PwCheckbox v-model="allowModification" label="Allow editing" />
+              </div>
+            </template>
           </div>
 
-          <label style="margin-top: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer">
-            <input v-model="behind" type="checkbox" style="width: auto" />
-            <span>Draw beneath the content, so body text stays fully legible</span>
-          </label>
-        </template>
-
-        <div class="btns">
-          <button v-if="!producesArchive" class="btn primary" :disabled="busy || !files.length" @click="run('stream')">
-            Preview
-          </button>
-          <button class="btn" :class="{ primary: producesArchive }" :disabled="busy || !files.length" @click="run('download')">
-            Download
-          </button>
-        </div>
+          <template #footer>
+            <PwButton
+              v-if="!noPreview"
+              variant="solid"
+              :loading="busy"
+              :disabled="!ready"
+              @click="run('stream')"
+            >
+              Apply &amp; preview
+            </PwButton>
+            <PwButton
+              :variant="noPreview ? 'solid' : 'outline'"
+              :loading="busy && noPreview"
+              :disabled="busy || !ready"
+              @click="run('download')"
+            >
+              Download
+            </PwButton>
+            <span v-if="noPreview" class="t-12 subtle right">
+              {{ mode === 'protect' ? 'Encrypted files cannot preview' : 'Multiple files return as a zip' }}
+            </span>
+          </template>
+        </PwCard>
       </div>
 
       <ResultPane
         :result="result"
         :error="error"
         :busy="busy"
+        busy-hint="Working on the document…"
         idle-hint="The result appears here."
       />
     </div>
   </div>
 </template>
+
+<style scoped>
+.swatch {
+  width: 34px;
+  height: var(--control-h);
+  padding: 2px;
+  border: 1px solid var(--border-field);
+  border-radius: var(--r-md);
+  background: var(--bg-field);
+  cursor: pointer;
+  flex: none;
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--solid-bg);
+  cursor: pointer;
+}
+</style>

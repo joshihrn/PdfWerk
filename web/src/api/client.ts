@@ -304,6 +304,13 @@ export const api = {
     return requestDocument('/v1/watermark', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'watermarked.pdf')
   },
 
+  protect: (file: File, request: unknown, delivery: Delivery) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('request', JSON.stringify(request))
+    return requestDocument('/v1/protect', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'protected.pdf')
+  },
+
   summarize: async (file: File, request: unknown): Promise<SummaryResult> => {
     const form = new FormData()
     form.append('file', file)

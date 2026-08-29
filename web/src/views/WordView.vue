@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
 import ResultPane from '../components/ResultPane.vue'
+import { PwButton, PwCard, PwPageHeader } from '../components/ui'
 import { api, saveBlob, type Delivery, type DocumentResult } from '../api/client'
 
 const files = ref<File[]>([])
 const result = ref<DocumentResult | null>(null)
 const error = ref<unknown>(null)
 const busy = ref(false)
+
+const ready = computed(() => files.value.length > 0)
 
 async function run(delivery: Delivery) {
   if (!files.value[0]) return
@@ -30,43 +33,44 @@ async function run(delivery: Delivery) {
 
 <template>
   <div>
-    <h1>Word to PDF</h1>
-    <p class="muted">
-      Converts .docx with layout preserved. Where LibreOffice is installed it is used for full
-      fidelity; otherwise a built-in renderer handles headings, formatting, lists, tables and images.
-    </p>
+    <PwPageHeader
+      title="Word to PDF"
+      description="Converts .docx with layout preserved. Where LibreOffice is available it is used for full fidelity; otherwise a built-in renderer handles headings, formatting, lists, tables and images."
+    />
 
     <div class="split">
-      <div class="panel" style="margin: 0">
+      <PwCard title="Document">
         <FileDrop
           v-model="files"
           accept=".docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          label="Drop a Word document here, or click to choose"
-          hint=".docx works everywhere; .doc needs a server with LibreOffice"
+          label="Drop a Word document here, or browse"
+          hint=".docx works everywhere · .doc needs a server with LibreOffice"
         />
 
-        <div class="btns">
-          <button class="btn primary" :disabled="busy || !files.length" @click="run('stream')">Preview</button>
-          <button class="btn" :disabled="busy || !files.length" @click="run('download')">Download</button>
-        </div>
-      </div>
+        <template #footer>
+          <PwButton variant="solid" :loading="busy" :disabled="!ready" @click="run('stream')">
+            Convert &amp; preview
+          </PwButton>
+          <PwButton :disabled="busy || !ready" @click="run('download')">Download</PwButton>
+        </template>
+      </PwCard>
 
-      <div class="stack">
+      <div class="stack-4">
         <ResultPane
           :result="result"
           :error="error"
           :busy="busy"
+          busy-hint="Converting the document…"
           idle-hint="The converted PDF appears here, tagged with which converter produced it."
         />
 
-        <div class="panel small muted" style="margin: 0">
-          <h3>Which converter ran?</h3>
-          <p style="margin-bottom: 0">
-            The result is labelled <span class="tag grey">via libreoffice</span> or
-            <span class="tag grey">via openxml</span>. They differ in fidelity, so if a complex
-            document comes out wrong, that label tells you whether a LibreOffice host would do better.
+        <PwCard title="Which converter ran?">
+          <p class="t-13 muted" style="margin: 0">
+            The result is labelled <strong>via libreoffice</strong> or <strong>via openxml</strong>.
+            They differ in fidelity, so if a complex document comes out wrong, that label tells you
+            whether a host with LibreOffice would do better.
           </p>
-        </div>
+        </PwCard>
       </div>
     </div>
   </div>

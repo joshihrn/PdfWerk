@@ -3,6 +3,20 @@ import { computed, nextTick, ref, watch } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
 import ResultPane from '../components/ResultPane.vue'
 import {
+  PwBadge,
+  PwButton,
+  PwCallout,
+  PwCard,
+  PwCheckbox,
+  PwField,
+  PwInput,
+  PwPageHeader,
+  PwSegmented,
+  PwSelect,
+  PwSpinner,
+  PwTextarea,
+} from '../components/ui'
+import {
   api,
   saveBlob,
   type Delivery,
@@ -34,6 +48,7 @@ interface DraftField {
   existing?: boolean
 }
 
+const mode = ref('design')
 const files = ref<File[]>([])
 const info = ref<PdfInfo | null>(null)
 const loadError = ref<string | null>(null)
@@ -54,9 +69,35 @@ const busy = ref(false)
 
 const newFieldType = ref<FieldType>('Text')
 
+const fillValues = ref<Record<string, string>>({})
+const flatten = ref(false)
+
 const page = computed(() => info.value?.pages.find((p) => p.page === currentPage.value) ?? null)
 const selected = computed(() => fields.value.find((f) => f.id === selectedId.value) ?? null)
 const pageFields = computed(() => fields.value.filter((f) => f.page === currentPage.value))
+const drawn = computed(() => fields.value.filter((f) => !f.existing))
+
+const modes = [
+  { value: 'design', label: 'Design fields' },
+  { value: 'fill', label: 'Fill values' },
+]
+
+const fieldTypes: { value: FieldType; label: string }[] = [
+  { value: 'Text', label: 'Text' },
+  { value: 'Checkbox', label: 'Checkbox' },
+  { value: 'Dropdown', label: 'Dropdown' },
+  { value: 'ListBox', label: 'List box' },
+  { value: 'RadioGroup', label: 'Radio group' },
+  { value: 'Signature', label: 'Signature' },
+]
+
+const pageOptions = computed(
+  () => info.value?.pages.map((p) => ({ value: p.page, label: `Page ${p.page}` })) ?? [],
+)
+
+const needsOptions = computed(
+  () => !!selected.value && ['Dropdown', 'ListBox', 'RadioGroup'].includes(selected.value.type),
+)
 
 // ---- loading -------------------------------------------------------------
 
@@ -66,6 +107,7 @@ watch(files, async (list) => {
   result.value = null
   submitError.value = null
   loadError.value = null
+  fillValues.value = {}
 
   if (!list[0]) return
 
@@ -75,8 +117,7 @@ watch(files, async (list) => {
     info.value = inspected
     currentPage.value = 1
 
-    // Existing fields load into the canvas so the designer edits a form rather than only
-    // adding to one. Their coordinates come back in the same space they were sent in.
+    // Existing fields load onto the canvas so this edits a form rather than only adding to one.
     fields.value = inspected.fields
       .filter((f) => f.rect !== null)
       .map((f) => ({
@@ -121,8 +162,9 @@ async function renderPage() {
   const document = await pdfjs.getDocument({ data }).promise
   const rendered = await document.getPage(currentPage.value)
 
-  // Fit the page to the available width, but never blow it up past its natural size.
-  const available = (surface.value?.clientWidth ?? 780) - 2   // less the 1px border each side
+  // Measured on the block-level wrapper: .designer is inline-block, so its own width
+  // reports the canvas rather than the space available to it.
+  const available = (surface.value?.clientWidth ?? 780) - 2
   const viewport = rendered.getViewport({ scale: 1 })
   scale.value = Math.min(available / viewport.width, 1.6)
 
@@ -153,7 +195,7 @@ function addFieldAt(pointX: number, pointY: number) {
   const size = defaultSize[newFieldType.value]
   const base = newFieldType.value.toLowerCase()
 
-  // Names must be unique within the form, so a suffix is appended until one is free.
+  // Names must be unique within a form, so a suffix is appended until one is free.
   let name = base
   let counter = 1
   while (fields.value.some((f) => f.name === name)) name = `${base}${++counter}`
@@ -170,7 +212,7 @@ function addFieldAt(pointX: number, pointY: number) {
     required: false,
     readOnly: false,
     multiline: false,
-    options: newFieldType.value === 'Dropdown' || newFieldType.value === 'ListBox' || newFieldType.value === 'RadioGroup'
+    options: ['Dropdown', 'ListBox', 'RadioGroup'].includes(newFieldType.value)
       ? 'Option A\nOption B'
       : '',
     toolTip: '',
@@ -183,8 +225,8 @@ function addFieldAt(pointX: number, pointY: number) {
 function onSurfaceClick(event: MouseEvent) {
   if (!page.value || !canvas.value) return
 
-  // Clicks that land on an existing field are handled by that field, not here.
-  if ((event.target as HTMLElement).closest('.field')) return
+  // Clicks landing on a field are that field's business, not the canvas's.
+  if ((event.target as HTMLElement).closest('.field-box')) return
 
   const bounds = canvas.value.getBoundingClientRect()
   const x = (event.clientX - bounds.left) / scale.value
@@ -196,16 +238,25 @@ function onSurfaceClick(event: MouseEvent) {
 }
 
 type DragMode = 'move' | 'resize'
-let drag: { id: number; mode: DragMode; startX: number; startY: number; originX: number; originY: number; originW: number; originH: number } | null = null
+let drag: {
+  id: number
+  mode: DragMode
+  startX: number
+  startY: number
+  originX: number
+  originY: number
+  originW: number
+  originH: number
+} | null = null
 
-function beginDrag(event: PointerEvent, field: DraftField, mode: DragMode) {
+function beginDrag(event: PointerEvent, field: DraftField, dragMode: DragMode) {
   event.stopPropagation()
   event.preventDefault()
 
   selectedId.value = field.id
   drag = {
     id: field.id,
-    mode,
+    mode: dragMode,
     startX: event.clientX,
     startY: event.clientY,
     originX: field.x,
@@ -214,7 +265,7 @@ function beginDrag(event: PointerEvent, field: DraftField, mode: DragMode) {
     originH: field.height,
   }
 
-  // Pointer capture keeps the drag alive even if the cursor leaves the element mid-gesture.
+  // Pointer capture keeps the gesture alive if the cursor leaves the element mid-drag.
   ;(event.target as HTMLElement).setPointerCapture(event.pointerId)
   window.addEventListener('pointermove', onDragMove)
   window.addEventListener('pointerup', endDrag)
@@ -266,12 +317,10 @@ async function applyDesign(delivery: Delivery) {
   submitError.value = null
 
   try {
-    const drawn = fields.value.filter((f) => !f.existing)
-
     const produced = await api.designFields(
       files.value[0],
       {
-        add: drawn.map((f) => ({
+        add: drawn.value.map((f) => ({
           name: f.name,
           type: f.type,
           rect: { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height },
@@ -281,7 +330,7 @@ async function applyDesign(delivery: Delivery) {
           toolTip: f.toolTip || null,
           options: optionList(f),
         })),
-        // A field loaded from the document and then deleted here must be removed there too.
+        // A field loaded from the document and then deleted here must go there too.
         remove: (info.value?.fields ?? [])
           .map((f) => f.name)
           .filter((name) => !fields.value.some((f) => f.name === name)),
@@ -299,11 +348,6 @@ async function applyDesign(delivery: Delivery) {
     busy.value = false
   }
 }
-
-// ---- filling -------------------------------------------------------------
-
-const fillValues = ref<Record<string, string>>({})
-const flatten = ref(false)
 
 async function fill(delivery: Delivery) {
   if (!files.value[0]) return
@@ -327,68 +371,60 @@ async function fill(delivery: Delivery) {
     busy.value = false
   }
 }
-
-const mode = ref<'design' | 'fill'>('design')
 </script>
 
 <template>
   <div>
-    <h1>Form fields</h1>
-    <p class="muted">
-      Click the page to drop a field, then drag to position and resize it. Coordinates are sent in
-      PDF points exactly as you place them.
-    </p>
+    <PwPageHeader
+      title="Form fields"
+      description="Click the page to place a field, then drag to position and resize it. Coordinates are sent in PDF points exactly as you place them."
+    >
+      <template v-if="info" #actions>
+        <PwSegmented v-model="mode" :options="modes" label="Form mode" />
+      </template>
+    </PwPageHeader>
 
-    <div class="panel">
+    <PwCard title="Document" class="mb">
       <FileDrop v-model="files" />
-      <div v-if="loading" class="note info" style="margin-top: 12px"><span class="spinner"></span> Reading document…</div>
-      <div v-else-if="loadError" class="note err" style="margin-top: 12px">{{ loadError }}</div>
-    </div>
 
-    <template v-if="info">
-      <div class="btns" style="margin-bottom: 14px">
-        <button class="btn" :class="{ primary: mode === 'design' }" @click="mode = 'design'">Design fields</button>
-        <button class="btn" :class="{ primary: mode === 'fill' }" @click="mode = 'fill'">Fill values</button>
-      </div>
+      <template v-if="loading || loadError || info" #footer>
+        <span v-if="loading" class="row t-13 muted"><PwSpinner :size="13" /> Reading document…</span>
+        <span v-else-if="loadError" class="t-13" style="color: var(--bad-fg)">{{ loadError }}</span>
+        <template v-else-if="info">
+          <PwBadge tone="neutral">{{ info.pageCount }} page(s)</PwBadge>
+          <PwBadge v-if="fields.length" tone="accent">{{ fields.length }} field(s)</PwBadge>
+        </template>
+      </template>
+    </PwCard>
 
-      <!-- ---- design ---- -->
-      <div v-if="mode === 'design'" class="split">
-        <div class="panel" style="margin: 0">
-          <div class="row" style="margin-bottom: 12px; align-items: center">
-            <div style="flex: 0 1 200px">
-              <label for="type">Field to place</label>
-              <select id="type" v-model="newFieldType">
-                <option>Text</option><option>Checkbox</option><option>Dropdown</option>
-                <option>ListBox</option><option>RadioGroup</option><option>Signature</option>
-              </select>
-            </div>
+    <!-- ---- design ---- -->
+    <div v-if="info && mode === 'design'" class="split">
+      <PwCard title="Page" flush>
+        <template #actions>
+          <PwSelect
+            v-model="newFieldType"
+            :options="fieldTypes"
+            class="type-select"
+            aria-label="Field type to place"
+          />
+          <PwSelect
+            v-if="info.pageCount > 1"
+            v-model.number="currentPage"
+            :options="pageOptions"
+            class="page-select"
+            aria-label="Page"
+          />
+        </template>
 
-            <div v-if="info.pageCount > 1" style="flex: 0 1 170px">
-              <label for="page">Page</label>
-              <select id="page" v-model.number="currentPage">
-                <option v-for="p in info.pages" :key="p.page" :value="p.page">
-                  Page {{ p.page }} of {{ info.pageCount }}
-                </option>
-              </select>
-            </div>
-
-            <div class="small muted" style="flex: 1 1 auto; text-align: right">
-              Click an empty spot to add · drag to move · corner handle to resize
-            </div>
-          </div>
-
-          <div ref="surface" class="designer-wrap">
-          <div
-            class="designer"
-            @click="onSurfaceClick"
-          >
+        <div ref="surface" class="designer-wrap">
+          <div class="designer" @click="onSurfaceClick">
             <canvas ref="canvas"></canvas>
 
             <div
               v-for="field in pageFields"
               :key="field.id"
-              class="field"
-              :class="{ selected: field.id === selectedId, existing: field.existing }"
+              class="field-box"
+              :class="{ 'is-selected': field.id === selectedId, 'is-existing': field.existing }"
               :style="{
                 left: `${field.x * scale}px`,
                 top: `${field.y * scale}px`,
@@ -398,200 +434,214 @@ const mode = ref<'design' | 'fill'>('design')
               @pointerdown="beginDrag($event, field, 'move')"
               @click.stop="selectedId = field.id"
             >
-              <span class="field-label">{{ field.name }}</span>
-              <span class="handle" @pointerdown="beginDrag($event, field, 'resize')"></span>
+              <span class="field-box__tag">{{ field.name }}</span>
+              <span class="field-box__handle" @pointerdown="beginDrag($event, field, 'resize')"></span>
             </div>
           </div>
-          </div>
-
-          <div class="btns">
-            <button class="btn primary" :disabled="busy || !fields.length" @click="applyDesign('stream')">
-              Apply &amp; preview
-            </button>
-            <button class="btn" :disabled="busy || !fields.length" @click="applyDesign('download')">Download</button>
-          </div>
         </div>
 
-        <div class="stack">
-          <div class="panel" style="margin: 0">
-            <h3>{{ selected ? 'Selected field' : 'Fields' }}</h3>
+        <template #footer>
+          <PwButton variant="solid" :loading="busy" :disabled="!fields.length" @click="applyDesign('stream')">
+            Apply &amp; preview
+          </PwButton>
+          <PwButton :disabled="busy || !fields.length" @click="applyDesign('download')">Download</PwButton>
+          <span class="t-12 subtle right">Click to add · drag to move · corner to resize</span>
+        </template>
+      </PwCard>
 
-            <template v-if="selected">
-              <label for="fname">Name</label>
-              <input id="fname" v-model="selected.name" type="text" />
+      <div class="stack-4">
+        <PwCard :title="selected ? 'Selected field' : 'Fields'">
+          <template v-if="selected">
+            <div class="stack-4">
+              <PwField v-slot="{ id }" label="Name" required>
+                <PwInput :id="id" v-model="selected.name" mono />
+              </PwField>
 
-              <label for="ftip" style="margin-top: 10px">Tooltip</label>
-              <input id="ftip" v-model="selected.toolTip" type="text" placeholder="Shown on hover" />
+              <PwField v-slot="{ id }" label="Tooltip" help="Shown on hover in a PDF reader">
+                <PwInput :id="id" v-model="selected.toolTip" />
+              </PwField>
 
-              <div class="row" style="margin-top: 10px">
-                <div><label>X</label><input v-model.number="selected.x" type="number" /></div>
-                <div><label>Y</label><input v-model.number="selected.y" type="number" /></div>
-              </div>
-              <div class="row" style="margin-top: 8px">
-                <div><label>Width</label><input v-model.number="selected.width" type="number" /></div>
-                <div><label>Height</label><input v-model.number="selected.height" type="number" /></div>
-              </div>
-
-              <template v-if="['Dropdown', 'ListBox', 'RadioGroup'].includes(selected.type)">
-                <label for="fopts" style="margin-top: 10px">Options (one per line)</label>
-                <textarea id="fopts" v-model="selected.options" style="min-height: 90px"></textarea>
-              </template>
-
-              <div class="stack" style="margin-top: 12px">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                  <input v-model="selected.required" type="checkbox" style="width: auto" /> <span>Required</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                  <input v-model="selected.readOnly" type="checkbox" style="width: auto" /> <span>Read only</span>
-                </label>
-                <label v-if="selected.type === 'Text'" style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                  <input v-model="selected.multiline" type="checkbox" style="width: auto" /> <span>Multiline</span>
-                </label>
+              <div class="cols-2">
+                <PwField v-slot="{ id }" label="X"><PwInput :id="id" v-model="selected.x" type="number" /></PwField>
+                <PwField v-slot="{ id }" label="Y"><PwInput :id="id" v-model="selected.y" type="number" /></PwField>
               </div>
 
-              <div class="btns">
-                <button class="btn small danger" @click="removeField(selected.id)">Delete field</button>
-                <button class="btn small" @click="selectedId = null">Done</button>
+              <div class="cols-2">
+                <PwField v-slot="{ id }" label="Width"><PwInput :id="id" v-model="selected.width" type="number" /></PwField>
+                <PwField v-slot="{ id }" label="Height"><PwInput :id="id" v-model="selected.height" type="number" /></PwField>
               </div>
-            </template>
 
-            <template v-else>
-              <p v-if="!fields.length" class="muted small" style="margin-bottom: 0">
-                No fields yet. Click anywhere on the page to place one.
-              </p>
-              <table v-else>
-                <tbody>
-                  <tr v-for="field in fields" :key="field.id" style="cursor: pointer" @click="selectedId = field.id; currentPage = field.page">
-                    <td><code>{{ field.name }}</code></td>
-                    <td class="muted small">{{ field.type }}</td>
-                    <td class="muted small">p{{ field.page }}</td>
-                    <td v-if="field.existing"><span class="tag grey">existing</span></td>
-                    <td v-else></td>
-                  </tr>
-                </tbody>
-              </table>
-            </template>
-          </div>
+              <PwField v-if="needsOptions" v-slot="{ id }" label="Options" help="One per line">
+                <PwTextarea :id="id" v-model="selected.options" :rows="4" />
+              </PwField>
 
-          <ResultPane :result="result" :error="submitError" :busy="busy" />
-        </div>
-      </div>
-
-      <!-- ---- fill ---- -->
-      <div v-else class="split">
-        <div class="panel" style="margin: 0">
-          <h3>Values</h3>
-
-          <p v-if="!info.fields.length" class="muted small">
-            This document has no form fields yet. Design some first, download the result, then
-            upload that to fill it.
-          </p>
-
-          <div v-else class="stack">
-            <div v-for="field in info.fields" :key="field.name">
-              <label :for="`v-${field.name}`">
-                {{ field.name }}
-                <span class="muted">· {{ field.type }}</span>
-              </label>
-
-              <select
-                v-if="field.options.length"
-                :id="`v-${field.name}`"
-                v-model="fillValues[field.name]"
-              >
-                <option value="">—</option>
-                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
-              </select>
-
-              <select v-else-if="field.type === 'Checkbox'" :id="`v-${field.name}`" v-model="fillValues[field.name]">
-                <option value="">—</option>
-                <option value="true">Checked</option>
-                <option value="false">Unchecked</option>
-              </select>
-
-              <input v-else :id="`v-${field.name}`" v-model="fillValues[field.name]" type="text" :placeholder="field.value ?? ''" />
+              <div class="stack">
+                <PwCheckbox v-model="selected.required" label="Required" />
+                <PwCheckbox v-model="selected.readOnly" label="Read only" />
+                <PwCheckbox v-if="selected.type === 'Text'" v-model="selected.multiline" label="Multiline" />
+              </div>
             </div>
-          </div>
 
-          <label style="margin-top: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer">
-            <input v-model="flatten" type="checkbox" style="width: auto" />
-            <span>Flatten — bake values in and remove the form</span>
-          </label>
+          </template>
 
-          <div class="btns">
-            <button class="btn primary" :disabled="busy || !info.fields.length" @click="fill('stream')">
-              Fill &amp; preview
-            </button>
-            <button class="btn" :disabled="busy || !info.fields.length" @click="fill('download')">Download</button>
-          </div>
+          <template v-else>
+            <p v-if="!fields.length" class="t-13 muted" style="margin: 0">
+              No fields yet. Click anywhere on the page to place one.
+            </p>
+
+            <table v-else class="table">
+              <tbody>
+                <tr
+                  v-for="field in fields"
+                  :key="field.id"
+                  class="pick"
+                  @click="selectedId = field.id; currentPage = field.page"
+                >
+                  <td><code>{{ field.name }}</code></td>
+                  <td class="t-12 subtle">{{ field.type }}</td>
+                  <td class="t-12 subtle num">p{{ field.page }}</td>
+                  <td>
+                    <PwBadge v-if="field.existing" tone="neutral">existing</PwBadge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+
+          <template v-if="selected" #footer>
+            <PwButton variant="danger" size="sm" @click="removeField(selected.id)">Delete field</PwButton>
+            <PwButton size="sm" @click="selectedId = null">Done</PwButton>
+          </template>
+        </PwCard>
+
+        <ResultPane :result="result" :error="submitError" :busy="busy" busy-hint="Writing fields…" />
+      </div>
+    </div>
+
+    <!-- ---- fill ---- -->
+    <div v-else-if="info && mode === 'fill'" class="split">
+      <PwCard title="Values">
+        <PwCallout v-if="!info.fields.length" tone="info">
+          This document has no form fields yet. Design some first, download the result, then upload
+          that to fill it.
+        </PwCallout>
+
+        <div v-else class="stack-4">
+          <PwField
+            v-for="field in info.fields"
+            :key="field.name"
+            v-slot="{ id }"
+            :label="field.name"
+            :help="field.type"
+          >
+            <PwSelect
+              v-if="field.options.length"
+              :id="id"
+              v-model="fillValues[field.name]"
+              :options="[{ value: '', label: '—' }, ...field.options.map((o) => ({ value: o, label: o }))]"
+            />
+
+            <PwSelect
+              v-else-if="field.type === 'Checkbox'"
+              :id="id"
+              v-model="fillValues[field.name]"
+              :options="[
+                { value: '', label: '—' },
+                { value: 'true', label: 'Checked' },
+                { value: 'false', label: 'Unchecked' },
+              ]"
+            />
+
+            <PwInput v-else :id="id" v-model="fillValues[field.name]" :placeholder="field.value ?? ''" />
+          </PwField>
         </div>
 
-        <ResultPane :result="result" :error="submitError" :busy="busy" idle-hint="The filled document appears here." />
-      </div>
-    </template>
+        <template #footer>
+          <PwButton variant="solid" :loading="busy" :disabled="!info.fields.length" @click="fill('stream')">
+            Fill &amp; preview
+          </PwButton>
+          <PwButton :disabled="busy || !info.fields.length" @click="fill('download')">Download</PwButton>
+          <PwCheckbox v-model="flatten" label="Flatten" help="Bakes values in and removes the form" />
+        </template>
+      </PwCard>
+
+      <ResultPane :result="result" :error="submitError" :busy="busy" idle-hint="The filled document appears here." />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.designer-wrap { width: 100%; }
+.mb { margin-bottom: var(--s-4); }
+
+.type-select { width: 140px; }
+.page-select { width: 110px; }
+
+.designer-wrap {
+  width: 100%;
+  padding: var(--s-4);
+  background: var(--bg-sunken);
+  display: flex;
+  justify-content: center;
+}
 
 .designer {
   position: relative;
   display: inline-block;
   line-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   overflow: hidden;
   background: #fff;
   max-width: 100%;
   cursor: crosshair;
+  box-shadow: var(--shadow-md);
 }
 
-.field {
+.field-box {
   position: absolute;
-  border: 1.5px solid var(--accent);
-  background: rgba(110, 168, 254, 0.16);
+  border: 1.5px solid var(--a-500);
+  background: color-mix(in srgb, var(--a-500) 14%, transparent);
   border-radius: 2px;
   cursor: move;
   touch-action: none;
 }
 
-.field.existing {
-  border-color: var(--accent-2);
-  background: rgba(56, 211, 159, 0.14);
+.field-box.is-existing {
+  border-color: var(--ok-fg);
+  background: color-mix(in srgb, var(--ok-fg) 14%, transparent);
 }
 
-.field.selected {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(110, 168, 254, 0.6);
+.field-box.is-selected {
+  box-shadow: 0 0 0 2px var(--bg-raised), 0 0 0 4px var(--a-500);
   z-index: 2;
 }
 
-.field-label {
+.field-box__tag {
   position: absolute;
-  top: -17px;
+  top: -18px;
   left: -1px;
-  font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
-  background: var(--accent);
-  color: #06122b;
-  padding: 1px 5px;
+  font: var(--w-semi) 10px/1.5 var(--font);
+  background: var(--a-600);
+  color: #fff;
+  padding: 0 5px;
   border-radius: 3px;
   white-space: nowrap;
   pointer-events: none;
 }
 
-.field.existing .field-label { background: var(--accent-2); }
+.field-box.is-existing .field-box__tag { background: var(--ok-fg); }
 
-.handle {
+.field-box__handle {
   position: absolute;
   right: -5px;
   bottom: -5px;
   width: 11px;
   height: 11px;
-  background: #fff;
-  border: 1.5px solid var(--accent);
+  background: var(--bg-raised);
+  border: 1.5px solid var(--a-500);
   border-radius: 2px;
   cursor: nwse-resize;
   touch-action: none;
 }
+
+.pick { cursor: pointer; }
 </style>

@@ -18,7 +18,9 @@ withDefaults(
   { type: 'text', disabled: false, readonly: false, invalid: false, mono: false },
 )
 
-const model = defineModel<string | number>()
+// Nullable because some numeric fields mean 'unset' rather than zero — a page restriction
+// of null is 'every page', which is not the same as page 0.
+const model = defineModel<string | number | null>()
 </script>
 
 <template>

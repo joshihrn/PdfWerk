@@ -1,6 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
+import {
+  PwBadge,
+  PwButton,
+  PwCallout,
+  PwCard,
+  PwCheckbox,
+  PwField,
+  PwInput,
+  PwPageHeader,
+  PwSelect,
+  PwSpinner,
+} from '../components/ui'
 import { api, type ProviderInfo, type SummaryResult } from '../api/client'
 
 const files = ref<File[]>([])
@@ -14,6 +26,25 @@ const providers = ref<ProviderInfo[]>([])
 const summary = ref<SummaryResult | null>(null)
 const error = ref<string | null>(null)
 const busy = ref(false)
+
+const ready = computed(() => files.value.length > 0)
+const anyConfigured = computed(() => providers.value.some((p) => p.configured))
+
+const styles = [
+  { value: 'Brief', label: 'Brief — two or three sentences' },
+  { value: 'Detailed', label: 'Detailed — covers each section' },
+  { value: 'Bullets', label: 'Bullets — substance in the key points' },
+  { value: 'ExecutiveSummary', label: 'Executive — outcomes, risks and money' },
+]
+
+const providerOptions = computed(() => [
+  { value: '', label: 'Auto — first available' },
+  ...providers.value.map((p) => ({
+    value: p.key,
+    label: p.configured ? p.key : `${p.key} (not configured)`,
+    disabled: !p.configured,
+  })),
+])
 
 onMounted(async () => {
   try {
@@ -48,98 +79,140 @@ async function run() {
 
 <template>
   <div>
-    <h1>Summarise a PDF</h1>
-    <p class="muted">
-      The document's text is extracted and sent to a free model. Anything too long for the model's
-      context is split into parts, summarised piecewise, then merged.
-    </p>
+    <PwPageHeader
+      title="Summarise a PDF"
+      description="The document's text is extracted and sent to a model. Anything longer than the model's context is split into parts, summarised piecewise, then merged."
+    />
 
-    <div
-      v-if="providers.length && !providers.some((p) => p.configured)"
-      class="note warn"
-      style="margin-bottom: 16px"
+    <PwCallout
+      v-if="providers.length && !anyConfigured"
+      tone="warn"
+      title="No AI provider configured"
+      class="mb"
     >
-      No AI provider is configured on this server yet. Add a Gemini or Groq API key, or run Ollama
-      locally, and this page will start working.
-    </div>
+      Add a Gemini or Groq API key, or run Ollama locally, and this page starts working. Every
+      other tool is unaffected.
+    </PwCallout>
 
     <div class="split">
-      <div class="panel" style="margin: 0">
-        <FileDrop v-model="files" />
+      <PwCard title="Document">
+        <div class="stack-4">
+          <FileDrop v-model="files" />
 
-        <div class="row" style="margin-top: 16px">
-          <div>
-            <label for="style">Style</label>
-            <select id="style" v-model="style">
-              <option>Brief</option>
-              <option>Detailed</option>
-              <option>Bullets</option>
-              <option value="ExecutiveSummary">Executive summary</option>
-            </select>
+          <div class="cols-2">
+            <PwField v-slot="{ id }" label="Style">
+              <PwSelect :id="id" v-model="style" :options="styles" />
+            </PwField>
+
+            <PwField v-slot="{ id }" label="Provider">
+              <PwSelect :id="id" v-model="provider" :options="providerOptions" />
+            </PwField>
           </div>
-          <div>
-            <label for="words">Target length (words)</label>
-            <input id="words" v-model.number="maxWords" type="number" min="40" max="2000" />
+
+          <PwField
+            v-slot="{ id }"
+            label="Focus"
+            help="Optional. Steers the summary toward what you care about."
+          >
+            <PwInput
+              :id="id"
+              v-model="focus"
+              placeholder="e.g. the payment terms and any termination clauses"
+            />
+          </PwField>
+
+          <div class="cols-2">
+            <PwField v-slot="{ id }" label="Target length (words)">
+              <PwInput :id="id" v-model="maxWords" type="number" :min="40" :max="2000" />
+            </PwField>
           </div>
-          <div>
-            <label for="provider">Provider</label>
-            <select id="provider" v-model="provider">
-              <option value="">Auto</option>
-              <option
-                v-for="p in providers"
-                :key="p.key"
-                :value="p.key"
-                :disabled="!p.configured"
-              >
-                {{ p.key }}{{ p.configured ? '' : ' (not configured)' }}
-              </option>
-            </select>
-          </div>
+
+          <PwCheckbox v-model="includeText" label="Also return the extracted text" />
         </div>
 
-        <label for="focus" style="margin-top: 12px">Focus (optional)</label>
-        <input id="focus" v-model="focus" type="text" placeholder="e.g. the payment terms and any termination clauses" />
+        <template #footer>
+          <PwButton variant="solid" :loading="busy" :disabled="!ready" @click="run">
+            Summarise
+          </PwButton>
+          <span v-if="busy" class="t-12 subtle">Free tiers can take a few seconds</span>
+        </template>
+      </PwCard>
 
-        <label style="margin-top: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer">
-          <input v-model="includeText" type="checkbox" style="width: auto" />
-          <span>Also return the extracted text</span>
-        </label>
+      <div class="stack-4">
+        <PwCallout v-if="busy" tone="info">
+          <span class="row"><PwSpinner :size="13" /> Extracting text and summarising…</span>
+        </PwCallout>
 
-        <div class="btns">
-          <button class="btn primary" :disabled="busy || !files.length" @click="run">Summarise</button>
-        </div>
-      </div>
-
-      <div class="stack">
-        <div v-if="busy" class="note info"><span class="spinner"></span> Reading and summarising…</div>
-        <div v-else-if="error" class="note err">{{ error }}</div>
+        <PwCallout v-else-if="error" tone="bad" title="Could not summarise">{{ error }}</PwCallout>
 
         <template v-else-if="summary">
-          <div class="note ok">
-            {{ summary.providerUsed }} / {{ summary.modelUsed }} ·
-            {{ summary.pageCount }} page(s) · {{ summary.wordCount.toLocaleString() }} words
-          </div>
+          <PwCard title="Summary">
+            <template #actions>
+              <PwBadge tone="neutral" mono>{{ summary.modelUsed }}</PwBadge>
+            </template>
 
-          <div class="panel" style="margin: 0">
-            <h3>Summary</h3>
-            <p style="margin-bottom: 0">{{ summary.summary }}</p>
+            <p class="lede">{{ summary.summary }}</p>
 
             <template v-if="summary.keyPoints.length">
-              <h3 style="margin-top: 18px">Key points</h3>
-              <ul class="muted small" style="margin: 0; padding-left: 20px">
-                <li v-for="(point, i) in summary.keyPoints" :key="i" style="margin-bottom: 5px">{{ point }}</li>
+              <h4 class="points__title">Key points</h4>
+              <ul class="points">
+                <li v-for="(point, i) in summary.keyPoints" :key="i">{{ point }}</li>
               </ul>
             </template>
-          </div>
 
-          <div v-if="summary.extractedText" class="panel" style="margin: 0">
-            <h3>Extracted text</h3>
-            <pre class="out" style="max-height: 320px; overflow-y: auto">{{ summary.extractedText }}</pre>
-          </div>
+            <template #footer>
+              <span class="t-12 subtle">
+                {{ summary.providerUsed }} · {{ summary.pageCount }} page(s) ·
+                {{ summary.wordCount.toLocaleString() }} words read
+              </span>
+            </template>
+          </PwCard>
+
+          <PwCard v-if="summary.extractedText" title="Extracted text" flush>
+            <pre class="extract">{{ summary.extractedText }}</pre>
+          </PwCard>
         </template>
 
-        <div v-else class="note info">The summary appears here.</div>
+        <PwCallout v-else tone="info">The summary appears here.</PwCallout>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.mb { margin-bottom: var(--s-4); }
+
+.lede {
+  margin: 0;
+  font-size: var(--t-14);
+  line-height: var(--lh-base);
+}
+
+.points__title {
+  margin: var(--s-5) 0 var(--s-2);
+  font-size: var(--t-11);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-subtle);
+}
+
+.points {
+  margin: 0;
+  padding-left: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-size: var(--t-13);
+  color: var(--fg-muted);
+}
+
+.extract {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>

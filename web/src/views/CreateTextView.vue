@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import ResultPane from '../components/ResultPane.vue'
-import { api, type Delivery, type DocumentResult } from '../api/client'
+import {
+  PwButton,
+  PwCard,
+  PwCheckbox,
+  PwField,
+  PwInput,
+  PwPageHeader,
+  PwSelect,
+  PwTextarea,
+} from '../components/ui'
+import { api, saveBlob, type Delivery, type DocumentResult } from '../api/client'
 
 const content = ref(`# Service Agreement
 
@@ -25,7 +35,7 @@ See the [full terms](https://example.com/terms) for details.
 
 const title = ref('Service Agreement')
 const author = ref('')
-const format = ref<'Markdown' | 'Plain'>('Markdown')
+const format = ref('Markdown')
 const page = ref('A4')
 const orientation = ref('Portrait')
 const marginMm = ref(20)
@@ -35,6 +45,20 @@ const pageNumbers = ref(true)
 const result = ref<DocumentResult | null>(null)
 const error = ref<unknown>(null)
 const busy = ref(false)
+
+const empty = computed(() => content.value.trim().length === 0)
+
+const formats = [
+  { value: 'Markdown', label: 'Markdown' },
+  { value: 'Plain', label: 'Plain text' },
+]
+
+const pages = ['A4', 'Letter', 'Legal', 'A3', 'A5'].map((p) => ({ value: p, label: p }))
+
+const orientations = [
+  { value: 'Portrait', label: 'Portrait' },
+  { value: 'Landscape', label: 'Landscape' },
+]
 
 async function run(delivery: Delivery) {
   busy.value = true
@@ -57,10 +81,7 @@ async function run(delivery: Delivery) {
     )
 
     result.value = produced
-    if (delivery === 'download') {
-      const { saveBlob } = await import('../api/client')
-      saveBlob(produced.blob, produced.fileName)
-    }
+    if (delivery === 'download') saveBlob(produced.blob, produced.fileName)
   } catch (ex) {
     result.value = null
     error.value = ex
@@ -72,76 +93,74 @@ async function run(delivery: Delivery) {
 
 <template>
   <div>
-    <h1>Create a PDF from text</h1>
-    <p class="muted">
-      Write Markdown or plain text and get a clean, paginated document. Headings, lists, tables,
-      block quotes, code and links are all rendered.
-    </p>
+    <PwPageHeader
+      title="Create a PDF from text"
+      description="Write Markdown or plain text and get a clean, paginated document. Headings, lists, tables, block quotes, code and links are all rendered."
+    />
 
     <div class="split">
-      <div class="panel" style="margin: 0">
-        <label for="content">Content</label>
-        <textarea id="content" v-model="content" style="min-height: 340px"></textarea>
+      <PwCard title="Content">
+        <div class="stack-4">
+          <PwField v-slot="{ id }" label="Document body" hide-label>
+            <PwTextarea :id="id" v-model="content" :rows="18" placeholder="# Heading…" />
+          </PwField>
 
-        <div class="row" style="margin-top: 14px">
-          <div>
-            <label for="title">Title</label>
-            <input id="title" v-model="title" type="text" placeholder="Used for the heading and file name" />
-          </div>
-          <div>
-            <label for="author">Author</label>
-            <input id="author" v-model="author" type="text" placeholder="Optional byline" />
+          <div class="cols-2">
+            <PwField v-slot="{ id }" label="Title" help="Used for the heading and the file name">
+              <PwInput :id="id" v-model="title" placeholder="Untitled document" />
+            </PwField>
+
+            <PwField v-slot="{ id }" label="Author" help="Optional byline under the title">
+              <PwInput :id="id" v-model="author" placeholder="—" />
+            </PwField>
           </div>
         </div>
 
-        <div class="btns">
-          <button class="btn primary" :disabled="busy || !content.trim()" @click="run('stream')">Preview</button>
-          <button class="btn" :disabled="busy || !content.trim()" @click="run('download')">Download</button>
-        </div>
-      </div>
+        <template #footer>
+          <PwButton variant="solid" :loading="busy" :disabled="empty" @click="run('stream')">
+            Preview
+          </PwButton>
+          <PwButton :disabled="busy || empty" @click="run('download')">Download</PwButton>
+          <span v-if="empty" class="t-12 subtle right">Add some content first</span>
+        </template>
+      </PwCard>
 
-      <div class="stack">
-        <div class="panel" style="margin: 0">
-          <h3>Layout</h3>
+      <div class="stack-4">
+        <PwCard title="Layout">
+          <div class="stack-4">
+            <PwField v-slot="{ id }" label="Format">
+              <PwSelect :id="id" v-model="format" :options="formats" />
+            </PwField>
 
-          <label for="format">Format</label>
-          <select id="format" v-model="format">
-            <option>Markdown</option>
-            <option>Plain</option>
-          </select>
+            <div class="cols-2">
+              <PwField v-slot="{ id }" label="Page size">
+                <PwSelect :id="id" v-model="page" :options="pages" />
+              </PwField>
 
-          <label for="page" style="margin-top: 10px">Page size</label>
-          <select id="page" v-model="page">
-            <option>A4</option><option>Letter</option><option>Legal</option>
-            <option>A3</option><option>A5</option>
-          </select>
-
-          <label for="orientation" style="margin-top: 10px">Orientation</label>
-          <select id="orientation" v-model="orientation">
-            <option>Portrait</option><option>Landscape</option>
-          </select>
-
-          <div class="row" style="margin-top: 10px">
-            <div>
-              <label for="margin">Margin (mm)</label>
-              <input id="margin" v-model.number="marginMm" type="number" min="0" max="100" />
+              <PwField v-slot="{ id }" label="Orientation">
+                <PwSelect :id="id" v-model="orientation" :options="orientations" />
+              </PwField>
             </div>
-            <div>
-              <label for="fontsize">Font size</label>
-              <input id="fontsize" v-model.number="fontSize" type="number" min="5" max="48" />
-            </div>
-          </div>
 
-          <label style="margin-top: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer">
-            <input v-model="pageNumbers" type="checkbox" style="width: auto" />
-            <span>Show "Page N of M" footer</span>
-          </label>
-        </div>
+            <div class="cols-2">
+              <PwField v-slot="{ id }" label="Margin (mm)">
+                <PwInput :id="id" v-model="marginMm" type="number" :min="0" :max="100" />
+              </PwField>
+
+              <PwField v-slot="{ id }" label="Font size (pt)">
+                <PwInput :id="id" v-model="fontSize" type="number" :min="5" :max="48" />
+              </PwField>
+            </div>
+
+            <PwCheckbox v-model="pageNumbers" label="Page numbers" help="Adds a “Page N of M” footer" />
+          </div>
+        </PwCard>
 
         <ResultPane
           :result="result"
           :error="error"
           :busy="busy"
+          busy-hint="Rendering the document…"
           idle-hint="Preview renders the PDF here without downloading it."
         />
       </div>

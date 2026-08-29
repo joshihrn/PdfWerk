@@ -203,6 +203,24 @@ An A record rather than a CNAME because GoDaddy cannot put a CNAME at the apex. 
 stable for the life of the app, but it is not reserved — deleting and recreating the app gets a
 new one, and the A record would need updating.
 
+### Reading the logs
+
+Application logging to the filesystem is switched on. Without it the only thing Kudu keeps is
+the platform's own container lifecycle chatter — the app's stdout is absent, which is a confusing
+place to be when a request is returning 500 and nothing explains why.
+
+```bash
+az rest --method get --resource "https://management.azure.com/"   --url "https://pdfwerk-api.scm.azurewebsites.net/api/logs/docker"
+```
+
+That lists the files. The one ending `_default_docker.log` is the application; the one ending
+plain `_docker.log` is the platform. Fetch either with `--url <href> --output-file <path>`.
+
+Worth knowing when reading them: a storage failure is caught and logged rather than allowed to
+stop startup, because anonymous callers do not need the database. The consequence is that a
+broken database looks like a perfectly healthy site that returns 500 on every write, so
+`Storage ready` in the log is the thing to check, not the status code on `/health`.
+
 ### Settings that are not in source control
 
 Four values are set on the app rather than committed, because three are secrets and the fourth is

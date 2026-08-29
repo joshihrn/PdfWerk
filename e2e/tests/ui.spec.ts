@@ -7,6 +7,7 @@ import {
   makeDocx,
   makeFormPdf,
   makePdf,
+  multiPagePdf,
   pdfPart,
   sharedPdf,
   signIn,
@@ -1273,4 +1274,172 @@ test.describe('console hygiene', () => {
       expect(problems, `console errors on ${path}`).toEqual([])
     })
   }
+})
+
+test.describe('multi-page documents', () => {
+  test('the designer offers a page selector only when there is more than one page', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'single.pdf',
+      mimeType: 'application/pdf',
+      buffer: await sharedPdf(request),
+    })
+
+    await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 30_000 })
+
+    // A picker with one option is noise.
+    await expect(page.getByLabel('Page', { exact: true })).toHaveCount(0)
+  })
+
+  test('fields stay on the page they were placed on', async ({ page, request }) => {
+    await page.goto('/forms')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'multi.pdf',
+      mimeType: 'application/pdf',
+      buffer: await multiPagePdf(request),
+    })
+
+    await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 30_000 })
+
+    const selector = page.getByLabel('Page', { exact: true })
+    await expect(selector).toBeVisible()
+
+    const canvas = page.locator('.designer canvas')
+    let box = (await canvas.boundingBox())!
+    await canvas.click({ position: { x: box.width * 0.25, y: box.height * 0.3 } })
+    await page.getByRole('button', { name: 'Done' }).click()
+
+    await expect(page.locator('.field-box')).toHaveCount(1)
+
+    // Moving to page two must not carry page one's field along with it.
+    await selector.selectOption('2')
+    await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 30_000 })
+    await expect(page.locator('.field-box')).toHaveCount(0)
+
+    box = (await canvas.boundingBox())!
+    await canvas.click({ position: { x: box.width * 0.4, y: box.height * 0.5 } })
+    await page.getByRole('button', { name: 'Done' }).click()
+
+    await expect(page.locator('.field-box')).toHaveCount(1)
+
+    // Both fields exist in the document even though only one is on screen.
+    await expect(page.getByText('2 field(s)')).toBeVisible()
+
+    await selector.selectOption('1')
+    await page.locator('.designer[data-ready="true"]').waitFor({ timeout: 30_000 })
+    await expect(page.locator('.field-box')).toHaveCount(1)
+  })
+
+  test('a page range reaches the endpoint', async ({ page, request }) => {
+    await page.goto('/pages')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'multi.pdf',
+      mimeType: 'application/pdf',
+      buffer: await multiPagePdf(request),
+    })
+
+    await page.getByLabel('Pages').fill('1-2')
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('a range naming a page that does not exist is refused, not ignored', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/pages')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'multi.pdf',
+      mimeType: 'application/pdf',
+      buffer: await multiPagePdf(request),
+    })
+
+    await page.getByLabel('Pages').fill('99')
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    // Silently returning page 1, or an empty document, would both be worse than saying no.
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 30_000 })
+  })
+})
+
+test.describe('page ranges', () => {
+  for (const [range, expected] of [
+    ['1', 1],
+    ['1-2', 2],
+    ['odd', 2],
+    ['even', 1],
+    ['2-', 2],
+    ['all', 3],
+  ] as const) {
+    test(`"${range}" selects ${expected} page(s) of three`, async ({ request }) => {
+      const key = await apiKey(request)
+
+      const response = await request.post('/v1/split?delivery=stream', {
+        headers: authHeaders(key),
+        multipart: {
+          file: pdfPart(await multiPagePdf(request)),
+          request: JSON.stringify({ mode: 'Extract', pages: range }),
+        },
+      })
+
+      expect(response.ok(), await response.text()).toBeTruthy()
+
+      const info = await (
+        await request.post('/v1/inspect', {
+          headers: authHeaders(key),
+          multipart: { file: pdfPart(Buffer.from(await response.body())) },
+        })
+      ).json()
+
+      expect(info.pageCount).toBe(expected)
+    })
+  }
+
+  test('a malformed range is a client error rather than a guess', async ({ request }) => {
+    const response = await request.post('/v1/split?delivery=stream', {
+      headers: authHeaders(await apiKey(request)),
+      multipart: {
+        file: pdfPart(await multiPagePdf(request)),
+        request: JSON.stringify({ mode: 'Extract', pages: '3-1' }),
+      },
+    })
+
+    expect(response.status()).toBe(400)
+  })
+
+  test('rotation applies only to the pages named, leaving both neighbours alone', async ({
+    request,
+  }) => {
+    const key = await apiKey(request)
+
+    const response = await request.post('/v1/rotate?delivery=stream', {
+      headers: authHeaders(key),
+      multipart: {
+        file: pdfPart(await multiPagePdf(request)),
+        request: JSON.stringify({ degrees: 90, pages: '2' }),
+      },
+    })
+
+    expect(response.ok(), await response.text()).toBeTruthy()
+
+    const info = await (
+      await request.post('/v1/inspect', {
+        headers: authHeaders(key),
+        multipart: { file: pdfPart(Buffer.from(await response.body())) },
+      })
+    ).json()
+
+    expect(info.pageCount).toBe(3)
+
+    // Inspect reports dimensions rather than a rotation angle, and a quarter turn swaps them —
+    // which is what any renderer will actually see. Three pages rather than two on purpose: with
+    // only a trailing page to check, "rotate everything from page 2 onwards" passes.
+    expect(info.pages[0].width).toBeLessThan(info.pages[0].height)
+    expect(info.pages[1].width).toBeGreaterThan(info.pages[1].height)
+    expect(info.pages[2].width).toBeLessThan(info.pages[2].height)
+  })
 })

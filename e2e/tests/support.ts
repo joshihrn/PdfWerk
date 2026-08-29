@@ -250,3 +250,19 @@ export async function makeFormPdf(request: APIRequestContext): Promise<Buffer> {
   expect(response.ok(), 'could not build a form fixture').toBeTruthy()
   return Buffer.from(await response.body())
 }
+
+let cachedMultiPage: Buffer | null = null
+
+/**
+ * A document of several pages, for anything that only misbehaves past the first one — page
+ * selection in the designer, ranges, rotation of specific pages.
+ */
+export async function multiPagePdf(request: APIRequestContext): Promise<Buffer> {
+  if (cachedMultiPage) return cachedMultiPage
+
+  const paragraph = 'The quick brown fox jumps over the lazy dog. '.repeat(70)
+  const content = ['# One', paragraph, '# Two', paragraph, '# Three', paragraph].join('\n\n')
+
+  cachedMultiPage = await makePdf(request, await apiKey(request), content, 'Multi page fixture')
+  return cachedMultiPage
+}

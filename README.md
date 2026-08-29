@@ -22,9 +22,16 @@ changes terms once you cross a revenue threshold — see [THIRD-PARTY-NOTICES.md
 | Merge | `POST /v1/merge` | Form fields carried across |
 | Summarise | `POST /v1/summarize` | Gemini, Groq or a local Ollama |
 | Inspect | `POST /v1/inspect` | Pages, metadata, page sizes, field inventory |
+| Split | `POST /v1/split` | Extract ranges, burst into single pages, or split into groups |
+| Rotate | `POST /v1/rotate` | Turn selected pages by a quarter turn |
+| Watermark | `POST /v1/watermark` | Stamp text over or beneath the content |
 
 Every endpoint that returns a document accepts `?delivery=download|stream|json`, so the same call
 serves a browser download, an inline preview, or a base64 envelope for server-to-server use.
+A split that produces several documents comes back as a zip.
+
+Page selections take the shorthand people actually write: `1-3,7`, `5-`, `-3`, `odd`, `even`,
+`first`, `last`, `all`.
 
 ## Quick start
 
@@ -83,7 +90,8 @@ stored only as a hash, so keep it.
 <script src="https://your-host/pdfwerk-embed.js"></script>
 <script>
   PdfWerk.mount('#pdf', {
-    tool: 'create',            // create | word | merge | summarize | fill | inspect
+    tool: 'create',            // create | word | merge | summarize | fill
+                               // | inspect | split | rotate | watermark
     apiKey: 'pw_…',            // optional
     delivery: 'preview',       // download | preview | callback
     onResult: (blob, meta) => console.log(meta.fileName, blob.size),
@@ -91,7 +99,7 @@ stored only as a hash, so keep it.
 </script>
 ```
 
-11.7 KB (4.2 KB gzipped), no dependencies, rendered into a shadow root so the host page's CSS and
+14 KB (4.7 KB gzipped), no dependencies, rendered into a shadow root so the host page's CSS and
 the widget's cannot reach each other. `baseUrl` defaults to whichever origin served the script, so
 cross-origin embedding needs no configuration.
 
@@ -168,9 +176,10 @@ the only transform between mouse and document is the display scale.
 dotnet test
 ```
 
-66 tests covering the PDF engine, Word conversion, the AI layer and the key store. They need no
-network, no API key and no Docker: SQLite backs the key store and a fake provider stands in for
-the model.
+152 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
+store — including a hardening suite that feeds the endpoints malformed files, PDF syntax inside
+replacement text, hostile field names and degenerate geometry. They need no network, no API key
+and no Docker: SQLite backs the key store and a fake provider stands in for the model.
 
 ## Licence
 

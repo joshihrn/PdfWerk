@@ -33,6 +33,9 @@ builder.Services.AddSingleton<IPdfTextEditor, PdfTextEditor>();
 builder.Services.AddSingleton<IPdfTextExtractor, PdfTextExtractor>();
 builder.Services.AddSingleton<IPdfMerger, PdfMerger>();
 builder.Services.AddSingleton<IPdfInspector, PdfInspector>();
+builder.Services.AddSingleton<IPdfSplitter, PdfSplitter>();
+builder.Services.AddSingleton<IPdfRotator, PdfRotator>();
+builder.Services.AddSingleton<IPdfWatermarker, PdfWatermarker>();
 
 builder.Services.AddSingleton<IWordConverter, LibreOfficeWordConverter>();
 builder.Services.AddSingleton<IWordConverter, OpenXmlWordConverter>();
@@ -105,6 +108,7 @@ app.MapOpenApi();
 app.MapScalarApiReference("/docs");
 
 app.MapPdfEndpoints();
+app.MapPageEndpoints();
 app.MapKeyEndpoints();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "pdfwerk" }))

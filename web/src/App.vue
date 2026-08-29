@@ -37,6 +37,7 @@ window.addEventListener('pdfwerk:key-changed', refreshTier)
         <RouterLink to="/edit">Edit text</RouterLink>
         <RouterLink to="/forms">Forms</RouterLink>
         <RouterLink to="/merge">Merge</RouterLink>
+        <RouterLink to="/pages">Pages</RouterLink>
         <RouterLink to="/summarize">Summarise</RouterLink>
         <RouterLink to="/inspect">Inspect</RouterLink>
         <RouterLink to="/api">API</RouterLink>

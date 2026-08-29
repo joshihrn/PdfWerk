@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/word', name: 'word', component: () => import('./views/WordView.vue') },
   { path: '/edit', name: 'edit', component: () => import('./views/EditTextView.vue') },
   { path: '/merge', name: 'merge', component: () => import('./views/MergeView.vue') },
+  { path: '/pages', name: 'pages', component: () => import('./views/PagesView.vue') },
   { path: '/forms', name: 'forms', component: () => import('./views/FormsView.vue') },
   { path: '/summarize', name: 'summarize', component: () => import('./views/SummarizeView.vue') },
   { path: '/inspect', name: 'inspect', component: () => import('./views/InspectView.vue') },

@@ -16,6 +16,9 @@ const routeFor: Record<string, string> = {
   Merge: '/merge',
   Summarize: '/summarize',
   Inspect: '/inspect',
+  Split: '/pages',
+  Rotate: '/pages',
+  Watermark: '/pages',
 }
 
 onMounted(async () => {

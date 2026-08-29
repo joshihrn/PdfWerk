@@ -283,6 +283,27 @@ export const api = {
     return requestDocument('/v1/forms/fill', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'filled.pdf')
   },
 
+  split: (file: File, request: unknown, delivery: Delivery) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('request', JSON.stringify(request))
+    return requestDocument('/v1/split', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'split.zip')
+  },
+
+  rotate: (file: File, request: unknown, delivery: Delivery) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('request', JSON.stringify(request))
+    return requestDocument('/v1/rotate', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'rotated.pdf')
+  },
+
+  watermark: (file: File, request: unknown, delivery: Delivery) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('request', JSON.stringify(request))
+    return requestDocument('/v1/watermark', { method: 'POST', headers: authHeaders(), body: form }, delivery, 'watermarked.pdf')
+  },
+
   summarize: async (file: File, request: unknown): Promise<SummaryResult> => {
     const form = new FormData()
     form.append('file', file)

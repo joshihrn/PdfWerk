@@ -10,7 +10,7 @@
  * widget (or ours reshape theirs). Shadow DOM makes both impossible.
  */
 
-type Tool = 'create' | 'word' | 'merge' | 'summarize' | 'fill' | 'inspect'
+type Tool = 'create' | 'word' | 'merge' | 'summarize' | 'fill' | 'inspect' | 'split' | 'rotate' | 'watermark'
 
 type DeliveryMode = 'download' | 'preview' | 'callback'
 
@@ -552,6 +552,115 @@ const TOOLS: Record<Tool, ToolSpec> = {
           },
         },
       )
+    },
+  },
+
+  split: {
+    title: 'Split a PDF',
+    subtitle: 'Extract page ranges, or burst into single pages.',
+    build: (ui) => {
+      const picked = ui.filePicker('application/pdf', false, 'Drop a PDF, or click to choose')
+
+      ui.label('Pages')
+      const pages = ui.el('input', { type: 'text', placeholder: 'all, 1-3,7, odd, 5-' })
+      pages.value = 'all'
+
+      ui.label('How to split')
+      const mode = ui.el('select')
+      for (const [value, text] of [
+        ['Extract', 'Extract — one document'],
+        ['Burst', 'Burst — one per page'],
+        ['Groups', 'Groups — one per range'],
+      ]) {
+        mode.appendChild(new Option(text, value))
+      }
+
+      ui.buttons({
+        text: 'Split',
+        primary: true,
+        run: async () => {
+          if (!picked.files[0]) throw new Error('Choose a PDF first.')
+
+          const form = new FormData()
+          form.append('file', picked.files[0])
+          form.append('request', JSON.stringify({ pages: pages.value, mode: mode.value }))
+
+          // Several outputs come back as a zip, which cannot be previewed inline.
+          await ui.submitDocument('/v1/split', { method: 'POST', body: form }, 'split.zip')
+        },
+      })
+    },
+  },
+
+  rotate: {
+    title: 'Rotate pages',
+    subtitle: 'Turn selected pages by a quarter turn.',
+    build: (ui) => {
+      const picked = ui.filePicker('application/pdf', false, 'Drop a PDF, or click to choose')
+
+      ui.label('Pages')
+      const pages = ui.el('input', { type: 'text', placeholder: 'all, 1-3, odd' })
+      pages.value = 'all'
+
+      ui.label('Rotation')
+      const degrees = ui.el('select')
+      for (const [value, text] of [['90', '90 clockwise'], ['180', '180'], ['270', '270 clockwise'], ['-90', '90 anticlockwise']]) {
+        degrees.appendChild(new Option(text, value))
+      }
+
+      ui.buttons({
+        text: 'Rotate',
+        primary: true,
+        run: async () => {
+          if (!picked.files[0]) throw new Error('Choose a PDF first.')
+
+          const form = new FormData()
+          form.append('file', picked.files[0])
+          form.append('request', JSON.stringify({ pages: pages.value, degrees: Number(degrees.value) }))
+
+          await ui.submitDocument('/v1/rotate', { method: 'POST', body: form }, 'rotated.pdf')
+        },
+      })
+    },
+  },
+
+  watermark: {
+    title: 'Watermark a PDF',
+    subtitle: 'Stamp text across the pages.',
+    build: (ui) => {
+      const picked = ui.filePicker('application/pdf', false, 'Drop a PDF, or click to choose')
+
+      ui.label('Text')
+      const text = ui.el('input', { type: 'text', maxLength: 200 })
+      text.value = 'CONFIDENTIAL'
+
+      ui.label('Pages')
+      const pages = ui.el('input', { type: 'text', placeholder: 'all, 1-3, odd' })
+      pages.value = 'all'
+
+      ui.label('Orientation')
+      const position = ui.el('select')
+      for (const option of ['Diagonal', 'Horizontal', 'Vertical']) position.appendChild(new Option(option, option))
+
+      ui.buttons({
+        text: 'Apply watermark',
+        primary: true,
+        run: async () => {
+          if (!picked.files[0]) throw new Error('Choose a PDF first.')
+          if (!text.value.trim()) throw new Error('Enter the watermark text.')
+
+          const form = new FormData()
+          form.append('file', picked.files[0])
+          form.append('request', JSON.stringify({
+            text: text.value,
+            pages: pages.value,
+            position: position.value,
+            opacity: 0.15,
+          }))
+
+          await ui.submitDocument('/v1/watermark', { method: 'POST', body: form }, 'watermarked.pdf')
+        },
+      })
     },
   },
 

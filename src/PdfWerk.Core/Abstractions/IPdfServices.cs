@@ -64,3 +64,21 @@ public interface IWordConverter
 
     Task<PdfArtifact> ConvertAsync(byte[] source, string fileName, CancellationToken ct = default);
 }
+
+/// <summary>Divides a document into page ranges.</summary>
+public interface IPdfSplitter
+{
+    IReadOnlyList<SplitPart> Split(byte[] pdf, SplitRequest request, string sourceName);
+}
+
+/// <summary>Turns pages by a quarter turn.</summary>
+public interface IPdfRotator
+{
+    PdfArtifact Rotate(byte[] pdf, RotateRequest request);
+}
+
+/// <summary>Stamps text across pages.</summary>
+public interface IPdfWatermarker
+{
+    PdfArtifact Apply(byte[] pdf, WatermarkRequest request);
+}

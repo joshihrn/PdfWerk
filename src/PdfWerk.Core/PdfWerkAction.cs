@@ -29,6 +29,15 @@ public enum PdfWerkAction
 
     /// <summary>Read-only introspection: page count, metadata, field list.</summary>
     Inspect,
+
+    /// <summary>Split a document into one or more page ranges.</summary>
+    Split,
+
+    /// <summary>Rotate pages by a quarter turn.</summary>
+    Rotate,
+
+    /// <summary>Stamp text across each page.</summary>
+    Watermark,
 }
 
 /// <summary>Human-facing metadata for an action, surfaced on the landing page and in the API docs.</summary>
@@ -60,6 +69,12 @@ public static class ActionCatalog
             "Extract the text and produce a structured AI summary.", true),
         new(PdfWerkAction.Inspect, "inspect", "Inspect a PDF",
             "Report page count, metadata and the AcroForm field inventory.", false),
+        new(PdfWerkAction.Split, "split", "Split a PDF",
+            "Pull out page ranges, or burst a document into single pages.", false),
+        new(PdfWerkAction.Rotate, "rotate", "Rotate pages",
+            "Turn selected pages by 90, 180 or 270 degrees.", false),
+        new(PdfWerkAction.Watermark, "watermark", "Watermark a PDF",
+            "Stamp text across every page, above or beneath the content.", false),
     ];
 
     public static ActionDescriptor Get(PdfWerkAction action) =>

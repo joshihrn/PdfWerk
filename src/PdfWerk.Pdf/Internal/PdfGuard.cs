@@ -35,10 +35,20 @@ internal static class PdfGuard
                     ? "This PDF is password protected. Remove the password before uploading it."
                     : $"This file could not be read as a PDF: {ex.Message}");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IndexOutOfRangeException or NullReferenceException)
+        catch (Exception ex) when (ex is not PdfWerkException
+                                   and not OperationCanceledException
+                                   and not OutOfMemoryException)
         {
-            // PDFsharp surfaces structural damage as assorted BCL exceptions rather than its own type.
-            throw new InvalidPdfException("This PDF appears to be corrupt and could not be parsed.");
+            // Everything else is treated as bad input rather than a server fault.
+            //
+            // PDFsharp reports structural damage inconsistently — assorted BCL exceptions, and
+            // for a missing cross-reference table a bare System.Exception. Enumerating the types
+            // it happens to throw is a losing game, and getting it wrong means a corrupt upload
+            // returns 500 instead of 422. Since the only thing happening here is parsing bytes
+            // the caller supplied, any failure is by definition the input's fault.
+            //
+            // Cancellation and OOM are excluded: those are about the host, not the document.
+            throw new InvalidPdfException($"This PDF appears to be corrupt and could not be parsed: {ex.Message}");
         }
     }
 

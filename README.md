@@ -194,7 +194,16 @@ rate limits are real: Redis, and whether forwarded headers should be trusted.
 
 ## Licence
 
-[Business Source License 1.1](LICENSE) — see [LICENSING.md](LICENSING.md) for what you may and may
-not do, in plain terms. Converts to [Apache-2.0](LICENSES/Apache-2.0.txt) on 2030-08-29.
+[Business Source License 1.1](LICENSE) — free to use, modify and self-host, including
+commercially. The only reservation is offering PdfWerk to third parties as a competing hosted
+service. Converts to [Apache-2.0](LICENSES/Apache-2.0.txt) on 2030-08-29.
 
-Contributions require a CLA; see [CONTRIBUTING.md](CONTRIBUTING.md).
+[LICENSING.md](LICENSING.md) explains what you may and may not do, with worked examples.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). They require agreement to the
+[CLA](CLA.md), which exists so the project can honour its own Change Date; you keep full ownership
+of your work.
+
+Security issues: **please report privately**, see [SECURITY.md](SECURITY.md).

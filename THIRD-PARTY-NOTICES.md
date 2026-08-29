@@ -1,8 +1,11 @@
 # Third-party notices
 
-PdfWerk is MIT licensed. Every dependency it ships is permissive — MIT, Apache-2.0, BSD or the
-PostgreSQL licence. There is **no copyleft** (GPL/LGPL/AGPL), **no source-available licence**, and
-**nothing that changes terms above a revenue threshold**.
+PdfWerk itself is under the [Business Source License 1.1](LICENSE) — see [LICENSING.md](LICENSING.md).
+This page covers its **dependencies**, which are a separate question.
+
+Every dependency PdfWerk ships is permissive — MIT, Apache-2.0, BSD or the PostgreSQL licence.
+There is **no copyleft** (GPL/LGPL/AGPL) and **nothing that changes terms above a revenue
+threshold**, so self-hosting carries no obligations beyond PdfWerk's own licence.
 
 Licences below were read from the resolved package metadata, not from documentation.
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/joshihrn/PdfWerk/security/advisories/new
+    about: Please report security issues privately, never as a public issue.
+  - name: Commercial licence enquiry
+    url: https://github.com/joshihrn/PdfWerk/blob/main/LICENSING.md
+    about: Hosting PdfWerk as a service, or needing terms the BSL does not grant.

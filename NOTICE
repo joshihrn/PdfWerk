@@ -1,0 +1,50 @@
+PdfWerk
+Copyright (c) 2026 Hiren Joshi
+
+Licensed under the Business Source License 1.1. See LICENSE.
+Converts to the Apache License 2.0 on 2030-08-29. See LICENSES/Apache-2.0.txt.
+
+================================================================================
+Third-party software distributed with this project
+================================================================================
+
+The Docker image built from this repository includes the following software,
+which is NOT covered by the PdfWerk licence and remains under its own terms.
+
+--------------------------------------------------------------------------------
+LibreOffice (libreoffice-writer-nogui)
+Copyright (c) The Document Foundation
+Licensed under the Mozilla Public License 2.0
+https://www.libreoffice.org/  |  https://www.mozilla.org/MPL/2.0/
+
+Used for high-fidelity Word-to-PDF conversion. PdfWerk invokes it as a separate
+process via `soffice --convert-to`; it is not linked, embedded, or modified, and
+no LibreOffice source is incorporated into PdfWerk. Under MPL-2.0 section 3.2,
+source for the unmodified binaries is available from The Document Foundation at
+the address above.
+
+LibreOffice is optional. Without it, PdfWerk falls back to its own OpenXML
+renderer, and the image can be built without this dependency.
+
+--------------------------------------------------------------------------------
+DejaVu fonts
+Copyright (c) 2003 Bitstream, Inc. Copyright (c) 2006 Tavmjong Bah.
+Bitstream Vera Fonts Copyright / DejaVu Fonts Licence (permissive, MIT-like)
+https://dejavu-fonts.github.io/
+
+Liberation fonts
+Copyright (c) 2012 Red Hat, Inc.
+SIL Open Font License 1.1
+https://github.com/liberationfonts
+
+Installed via the operating system package manager, not vendored into this
+repository. PDFsharp ships no fonts and has no default font resolver on Linux,
+so at least one font family must be present for rendering to work at all.
+
+================================================================================
+Libraries linked into PdfWerk
+================================================================================
+
+All are MIT, Apache-2.0, BSD or the PostgreSQL licence. None are copyleft, and
+none change terms above a revenue threshold. The full inventory, with licences
+read from package metadata, is in THIRD-PARTY-NOTICES.md.

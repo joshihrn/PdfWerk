@@ -709,6 +709,10 @@ test.describe('form designer interaction', () => {
 
 test.describe('summarise', () => {
   test('summarises a document, or says plainly that no model is configured', async ({ page, request }) => {
+    // This one goes out to a third-party model, so it needs more than the suite-wide 30s. An
+    // assertion timeout alone cannot help: the test timeout kills the test first.
+    test.setTimeout(120_000)
+
     const providers = await configuredProviders(request)
     const pdf = await sharedPdf(request)
 
@@ -1441,5 +1445,120 @@ test.describe('page ranges', () => {
     expect(info.pages[0].width).toBeLessThan(info.pages[0].height)
     expect(info.pages[1].width).toBeGreaterThan(info.pages[1].height)
     expect(info.pages[2].width).toBeLessThan(info.pages[2].height)
+  })
+})
+
+test.describe('file list', () => {
+  async function twoFiles(page: import('@playwright/test').Page, request: import('@playwright/test').APIRequestContext) {
+    const key = await apiKey(request)
+    const one = await makePdf(request, key, 'Alpha document.', 'Alpha')
+    const two = await makePdf(request, key, 'Beta document.', 'Beta')
+
+    await page.goto('/merge')
+    await page.setInputFiles('input[type="file"]', [
+      { name: 'alpha.pdf', mimeType: 'application/pdf', buffer: one },
+      { name: 'beta.pdf', mimeType: 'application/pdf', buffer: two },
+    ])
+  }
+
+  test('files can be reordered, and the order is what is sent', async ({ page, request }) => {
+    await twoFiles(page, request)
+
+    const names = page.locator('.file__name')
+    await expect(names).toHaveText(['alpha.pdf', 'beta.pdf'])
+
+    // Merge is the one operation where sequence is the whole point.
+    await page.getByRole('button', { name: 'Move beta.pdf earlier' }).click()
+    await expect(names).toHaveText(['beta.pdf', 'alpha.pdf'])
+
+    const request2 = page.waitForRequest((r) => r.url().includes('/v1/merge'))
+    await page.getByRole('button', { name: 'Merge & preview' }).click()
+    await request2
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('the first file cannot be moved earlier and the last cannot be moved later', async ({
+    page,
+    request,
+  }) => {
+    await twoFiles(page, request)
+
+    // Controls that do nothing are worse than absent ones: they suggest the click failed.
+    await expect(page.getByRole('button', { name: 'Move alpha.pdf earlier' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Move beta.pdf later' })).toBeDisabled()
+  })
+
+  test('a file can be removed, and the action re-disables below the minimum', async ({
+    page,
+    request,
+  }) => {
+    await twoFiles(page, request)
+
+    await page.getByRole('button', { name: 'Remove beta.pdf' }).click()
+
+    await expect(page.locator('.file__name')).toHaveText(['alpha.pdf'])
+    await expect(page.getByText('Add at least one more file')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Merge & preview' })).toBeDisabled()
+  })
+
+  test('choosing files twice adds to the list rather than replacing it', async ({ page, request }) => {
+    await twoFiles(page, request)
+
+    await page.setInputFiles('input[type="file"]', [
+      { name: 'gamma.pdf', mimeType: 'application/pdf', buffer: await sharedPdf(request) },
+    ])
+
+    // Replacing the list would silently discard work on every second selection.
+    await expect(page.locator('.file__name')).toHaveText(['alpha.pdf', 'beta.pdf', 'gamma.pdf'])
+  })
+})
+
+test.describe('api key lifecycle in the browser', () => {
+  test('a key can be forgotten and the tier falls back to anonymous', async ({ page }) => {
+    await page.goto('/api')
+
+    await expect(page.getByText('saved in this browser')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Forget it here' }).click()
+
+    // Forget is local only: the key still works elsewhere, so the offer to create one returns.
+    await expect(page.getByRole('button', { name: 'Create a free key' })).toBeVisible()
+
+    const stored = await page.evaluate(() => window.localStorage.getItem('pdfwerk.apiKey'))
+    expect(stored).toBeNull()
+  })
+
+  test('a pasted key is saved and reflected in the tier badge', async ({ page, request }) => {
+    const key = await apiKey(request)
+
+    await page.goto('/api')
+    await page.getByRole('button', { name: 'Forget it here' }).click()
+
+    await page.getByLabel('Existing key').fill(key)
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    await expect(page.getByText('saved in this browser')).toBeVisible()
+
+    // Scoped to the badge in the chrome. On this page "Free" also appears in the identity table
+    // and the quota card, so an unscoped match is ambiguous rather than wrong.
+    await expect(page.getByRole('link', { name: 'Free' })).toBeVisible()
+  })
+
+  test('the saved key survives a reload', async ({ page }) => {
+    await page.goto('/api')
+    await page.reload()
+
+    await expect(page.getByText('saved in this browser')).toBeVisible()
+  })
+
+  test('an empty key cannot be saved', async ({ page }) => {
+    await page.goto('/api')
+    await page.getByRole('button', { name: 'Forget it here' }).click()
+
+    await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await page.getByLabel('Existing key').fill('   ')
+    await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 })

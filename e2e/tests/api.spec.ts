@@ -463,6 +463,9 @@ test.describe('text replacement', () => {
   })
 
   test('the replacement is actually in the document, and the original is not', async ({ request }) => {
+    // Reading the text back goes through summarisation, which calls a model.
+    test.setTimeout(120_000)
+
     const key = await apiKey(request)
     const pdf = await makePdf(request, key, 'The agreement covers London.', 'Deed')
 

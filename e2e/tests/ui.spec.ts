@@ -1642,3 +1642,138 @@ test.describe('metadata during navigation', () => {
     }
   })
 })
+
+test.describe('admin portal', () => {
+  const ADMIN = 'pw_e2e_test_admin_key_not_a_secret_1'
+
+  test('it asks for a key, and holds nothing until it gets one', async ({ page }) => {
+    await page.goto('/admin')
+
+    await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible()
+    await expect(page.getByLabel('Key')).toBeVisible()
+
+    // Nothing administrative should be on screen before a key is accepted.
+    await expect(page.getByRole('tab', { name: 'Requests' })).toHaveCount(0)
+  })
+
+  test('a key that is not an administrator key is rejected', async ({ page, request }) => {
+    await page.goto('/admin')
+
+    await page.getByLabel('Key').fill(await apiKey(request))
+    await page.getByRole('button', { name: 'Sign in' }).click()
+
+    await expect(page.getByText('That key was not accepted.')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('tab', { name: 'Requests' })).toHaveCount(0)
+  })
+
+  test('the admin key opens the log, and the log has rows in it', async ({ page }) => {
+    await page.goto('/admin')
+
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    // The row for this very page load should be there, which is the shortest possible proof that
+    // the log is live rather than a fixture.
+    await expect(page.getByText('/admin').first()).toBeVisible()
+  })
+
+  test('the key is held for the tab only, not the browser', async ({ page }) => {
+    await page.goto('/admin')
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    const storage = await page.evaluate(() => ({
+      session: sessionStorage.getItem('pdfwerk.adminKey'),
+      local: localStorage.getItem('pdfwerk.adminKey'),
+      publicKey: localStorage.getItem('pdfwerk.apiKey'),
+    }))
+
+    // An administrator's key surviving on a shared machine is what turns a borrowed laptop into
+    // an incident. It must also never land under the name every other page reads.
+    expect(storage.session).toBe(ADMIN)
+    expect(storage.local).toBeNull()
+    expect(storage.publicKey).not.toBe(ADMIN)
+  })
+
+  test('signing out clears the key and the screen', async ({ page }) => {
+    await page.goto('/admin')
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByRole('button', { name: 'Sign out' }).click()
+
+    await expect(page.getByLabel('Key')).toBeVisible()
+    expect(await page.evaluate(() => sessionStorage.getItem('pdfwerk.adminKey'))).toBeNull()
+  })
+
+  test('an address can be blocked from a log row and unblocked again', async ({ page }) => {
+    await page.goto('/admin')
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByRole('tab', { name: 'Blocked addresses' }).click()
+
+    // A range that cannot possibly include the test runner, since blocking ourselves mid-suite
+    // would end the run in a way that looks like a bug in the block list.
+    await page.getByLabel('Address or range').fill('198.51.100.0/24')
+    await page.getByLabel('Reason').fill('browser test')
+    await page.getByRole('button', { name: 'Block it' }).click()
+
+    await expect(page.getByText('Blocked 198.51.100.0/24.')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('198.51.100.0/24').last()).toBeVisible()
+
+    await page.getByRole('button', { name: 'Unblock' }).first().click()
+    await expect(page.getByText(/Unblocked/)).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('a bad range is reported rather than silently ignored', async ({ page }) => {
+    await page.goto('/admin')
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByRole('tab', { name: 'Blocked addresses' }).click()
+    await page.getByLabel('Address or range').fill('definitely not an address')
+    await page.getByRole('button', { name: 'Block it' }).click()
+
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('rate limits are listed and editable', async ({ page }) => {
+    await page.goto('/admin')
+    await page.getByLabel('Key').fill(ADMIN)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByRole('tab', { name: 'Rate limits' }).click()
+
+    await expect(page.getByText('Anonymous').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Edit' }).first().click()
+
+    await expect(page.getByLabel('Per minute')).toBeVisible()
+    await expect(page.getByLabel('Max upload bytes')).toBeVisible()
+  })
+
+  test('the portal is kept out of search results', async ({ page, request }) => {
+    const html = await (await request.get('/admin')).text()
+
+    // Not a secret — the server refuses anyone without a key regardless — but listing it in a
+    // sitemap or letting it surface in results advertises where to go looking.
+    expect(html).toContain('name="robots" content="noindex, nofollow"')
+
+    const sitemap = await (await request.get('/sitemap.xml')).text()
+    expect(sitemap).not.toContain('/admin')
+
+    const robots = await (await request.get('/robots.txt')).text()
+    expect(robots).toContain('Disallow: /admin')
+
+    await page.goto('/')
+    await expect(page.getByRole('navigation', { name: 'Tools' }).getByRole('link', { name: 'Administration' })).toHaveCount(0)
+  })
+})

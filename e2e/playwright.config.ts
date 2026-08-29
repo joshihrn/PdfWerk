@@ -108,6 +108,15 @@ export default defineConfig({
     ? undefined
     : {
         command: 'dotnet run --project ../src/PdfWerk.Api --launch-profile http',
+
+        /**
+         * A throwaway administrator key so the admin tests have something to sign in with.
+         *
+         * Not a secret, and deliberately obvious about it: it only ever reaches a server this
+         * suite starts on localhost, and the bootstrap only mints a key when none exists. A real
+         * deployment sets Admin:BootstrapKey once, signs in, and removes it.
+         */
+        env: { Admin__BootstrapKey: 'pw_e2e_test_admin_key_not_a_secret_1' },
         url: `${BASE_URL}/health`,
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,

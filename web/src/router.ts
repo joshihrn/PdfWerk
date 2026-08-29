@@ -16,6 +16,11 @@ const routes: RouteRecordRaw[] = [
   { path: '/summarize', name: 'summarize', component: () => import('./views/SummarizeView.vue') },
   { path: '/inspect', name: 'inspect', component: () => import('./views/InspectView.vue') },
   { path: '/api', name: 'api', component: () => import('./views/ApiView.vue') },
+
+  // Not in the navigation, and not in the sitemap. Reachable by anyone who types it, but there is
+  // nothing behind it without an administrator's key, so hiding the route is tidiness rather than
+  // a security measure — the server is what refuses.
+  { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
   { path: '/:catchAll(.*)', redirect: '/' },
 ]
 

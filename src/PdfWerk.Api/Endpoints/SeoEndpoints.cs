@@ -33,6 +33,7 @@ public static class SeoEndpoints
                     // of an operation endpoint would spend a caller's quota.
                     .AppendLine("Disallow: /v1/")
                     .AppendLine("Disallow: /health")
+                    .AppendLine("Disallow: /admin")
                     .AppendLine()
                     .AppendLine($"Sitemap: {catalogue.BaseUrl}/sitemap.xml")
                     .ToString();
@@ -45,7 +46,9 @@ public static class SeoEndpoints
             {
                 XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
 
-                var urls = catalogue.Pages.Select(page => new XElement(
+                // Excludes anything marked noindex. Listing the administrative page in a sitemap
+                // would be advertising exactly where to go looking.
+                var urls = catalogue.PublicPages.Select(page => new XElement(
                     ns + "url",
                     new XElement(ns + "loc", catalogue.Absolute(page.Path)),
                     // The landing page is the entry point; the tools are each a destination in
@@ -69,6 +72,9 @@ public static class SeoEndpoints
         app.MapFallback(async context =>
         {
             var html = shell.Render(context.Request.Path);
+
+            if (catalogue.Find(context.Request.Path) is { NoIndex: true })
+                context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
 
             if (html is null)
             {

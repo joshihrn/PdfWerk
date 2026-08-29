@@ -182,7 +182,7 @@ the only transform between mouse and document is the display scale.
 dotnet test
 ```
 
-165 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
+191 tests covering the PDF engine, Word conversion, page operations, the AI layer and the key
 store — including a hardening suite that feeds the endpoints malformed files, PDF syntax inside
 replacement text, hostile field names and degenerate geometry. They need no network, no API key
 and no Docker: SQLite backs the key store and a fake provider stands in for the model.
@@ -193,7 +193,7 @@ and no Docker: SQLite backs the key store and a fake provider stands in for the 
 cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
-164 Playwright tests against a real running instance — 45 driving the HTTP API directly and 119
+185 Playwright tests against a real running instance — 57 driving the HTTP API directly and 128
 driving the browser, including an axe accessibility audit of every page in both themes. They start the server themselves (or attach to one already on `:5272`),
 mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
 there are no binary files checked in and nothing to set up first.
@@ -261,6 +261,40 @@ The Open Graph card is regenerated with:
 ```bash
 node web/tools/make-og-image.mjs
 ```
+
+## Administration
+
+A portal at `/admin`, behind a key flagged as an administrator's. It shows the last hundred
+requests with the address that made them, blocks and unblocks addresses or CIDR ranges, and edits
+every rate limit without a restart.
+
+Create the first key by setting a secret and starting the service:
+
+```bash
+Admin__BootstrapKey=pw_your_secret_of_at_least_24_chars dotnet run --project src/PdfWerk.Api
+```
+
+Then sign in at `/admin` and **remove the setting** — a bootstrap secret left in configuration is
+a standing back door. It is keyed on the secret rather than on whether any admin exists, so
+setting it again is also the way back in if the only key is lost.
+
+Things worth knowing:
+
+- **Requests are logged with raw addresses.** Everywhere else in the service works from a salted
+  hash, deliberately; the log cannot, because an administrator cannot block what they cannot read
+  and a hash cannot be matched against a range. That makes this the most sensitive table here.
+  `Admin:RetentionDays` prunes it; `0`, the default, keeps everything indefinitely. Addresses are
+  personal data in the UK and EU, so that default is worth a decision rather than a shrug.
+- **Static assets are not logged**, and query strings are never stored — they carry keys and
+  one-time links often enough that keeping them turns an audit trail into a credential store.
+- **Blocking is enforced ahead of everything else**, so a blocked caller never reaches the rate
+  limiter, the key store or the PDF engine. A `/0` range is refused, since it would lock out the
+  administrator adding it.
+- **Rate limit changes are overrides** layered over `appsettings.json`, not a copy of it. Anything
+  left alone keeps following configuration, so a deployment can still move the defaults.
+- The portal is `noindex`, excluded from the sitemap, disallowed in `robots.txt` and absent from
+  the navigation. None of that is a security measure — the server refuses anyone without a key —
+  it just keeps it out of search results.
 
 ## Deploying
 

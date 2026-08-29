@@ -21,7 +21,11 @@ namespace PdfWerk.Api.Infrastructure;
 /// moment it mounts. That is deliberately a faithful precis of the page rather than extra
 /// keywords: the point is that a crawler without JavaScript sees what a reader sees, not more.
 ///
-/// Rendered once per path and cached; the shell only changes when the app is rebuilt.
+/// Rendered once per path and cached, keyed on the shell file's last-write time. Vite emits
+/// content-hashed asset names, so a rebuilt app changes the script and stylesheet the shell points
+/// at — and a cache that ignored that would keep serving markup referencing files no longer on
+/// disk. The page then loads, renders nothing but the crawlable summary, and reports no error at
+/// all, which is a miserable thing to diagnose.
 /// </remarks>
 public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
 {
@@ -33,7 +37,10 @@ public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
 
     private readonly ConcurrentDictionary<string, string> rendered = new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly Lock gate = new();
+
     private string? shell;
+    private DateTime shellWrittenAt;
 
     /// <summary>The shell for a path, or null when there is no metadata or no file to work from.</summary>
     public string? Render(string path)
@@ -41,7 +48,27 @@ public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
         var page = catalogue.Find(path);
         if (page is null) return null;
 
+        Reload();
+
         return rendered.GetOrAdd(page.Path, _ => Build(page));
+    }
+
+    /// <summary>Drops the cache when index.html has been written since it was read.</summary>
+    private void Reload()
+    {
+        if (!File.Exists(indexPath)) return;
+
+        var written = File.GetLastWriteTimeUtc(indexPath);
+        if (shell is not null && written == shellWrittenAt) return;
+
+        lock (gate)
+        {
+            if (shell is not null && written == shellWrittenAt) return;
+
+            shell = File.ReadAllText(indexPath);
+            shellWrittenAt = written;
+            rendered.Clear();
+        }
     }
 
     private string Build(SeoPage page)
@@ -53,6 +80,9 @@ public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
         var site = catalogue.Document.SiteName;
 
         var head = new StringBuilder();
+
+        if (page.NoIndex)
+            head.AppendLine("    <meta name=\"robots\" content=\"noindex, nofollow\" />");
 
         head.AppendLine($"    <link rel=\"canonical\" href=\"{Escape(canonical)}\" />");
 
@@ -92,7 +122,7 @@ public sealed class SeoShell(SeoCatalogue catalogue, string indexPath)
     {
         var links = string.Join(
             "\n        ",
-            catalogue.Pages
+            catalogue.PublicPages
                 .Where(p => p.Path != page.Path)
                 .Select(p => $"<li><a href=\"{Escape(p.Path)}\">{Escape(p.Heading ?? p.Title)}</a></li>"));
 

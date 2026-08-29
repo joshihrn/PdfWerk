@@ -911,3 +911,180 @@ test.describe('search engine metadata', () => {
     expect(body).toContain('href="/merge"')
   })
 })
+
+/**
+ * The administrative API.
+ *
+ * The key here is the one the harness bootstraps; it exists only on a server this suite started.
+ */
+test.describe('admin api', () => {
+  const ADMIN = 'pw_e2e_test_admin_key_not_a_secret_1'
+
+  const asAdmin = { 'X-Api-Key': ADMIN }
+
+  test('an ordinary key cannot reach it, and is not told it exists', async ({ request }) => {
+    const key = await apiKey(request)
+
+    const response = await request.get('/v1/admin/requests', { headers: authHeaders(key) })
+
+    // 404 rather than 403 on purpose. Confirming to a stranger that an admin API lives here
+    // gains them something and costs us nothing to withhold.
+    expect(response.status()).toBe(404)
+    expect((await response.json()).error).toBe('not_found')
+  })
+
+  test('no key at all is refused the same way', async ({ request }) => {
+    expect((await request.get('/v1/admin/requests')).status()).toBe(404)
+  })
+
+  test('the admin key is accepted and names itself', async ({ request }) => {
+    const body = await (await request.get('/v1/admin/me', { headers: asAdmin })).json()
+
+    expect(body.admin).toBe(true)
+    expect(body.label).toBeTruthy()
+  })
+
+  test('requests are logged with the address that made them', async ({ request }) => {
+    // Something distinctive to look for, so this does not depend on what else has run.
+    await request.get('/v1/actions?probe=admin-log-test')
+
+    const body = await (await request.get('/v1/admin/requests?take=100', { headers: asAdmin })).json()
+
+    expect(body.total).toBeGreaterThan(0)
+
+    const logged = body.requests.find((r: { path: string }) => r.path === '/v1/actions')
+
+    expect(logged, 'the probe request should have been logged').toBeTruthy()
+    expect(logged.address, 'an address is the whole point of the log').toBeTruthy()
+    expect(logged.method).toBe('GET')
+    expect(logged.statusCode).toBe(200)
+  })
+
+  test('the query string is not kept', async ({ request }) => {
+    await request.get('/v1/actions?token=super-secret-value')
+
+    const body = await (await request.get('/v1/admin/requests?take=100', { headers: asAdmin })).json()
+
+    // Query strings carry API keys, session tokens and one-time links often enough that storing
+    // them turns an audit trail into a credential store.
+    expect(JSON.stringify(body.requests)).not.toContain('super-secret-value')
+  })
+
+  test('static assets are not logged', async ({ request }) => {
+    await request.get('/favicon.svg')
+
+    const body = await (await request.get('/v1/admin/requests?take=100', { headers: asAdmin })).json()
+    const assets = body.requests.filter((r: { path: string }) => r.path.endsWith('.svg'))
+
+    // One page view pulls a dozen of these. Logging them buries everything worth reading.
+    expect(assets).toHaveLength(0)
+  })
+
+  test('the log can be filtered to one address', async ({ request }) => {
+    const body = await (await request.get('/v1/admin/requests?take=5&address=203.0.113.99', { headers: asAdmin })).json()
+
+    expect(Array.isArray(body.requests)).toBe(true)
+    expect(body.requests).toHaveLength(0)
+  })
+
+  test('a range can be blocked, listed and unblocked', async ({ request }) => {
+    const added = await request.post('/v1/admin/blocks', {
+      headers: asAdmin,
+      data: { cidr: '198.51.100.7/24', reason: 'end to end test' },
+    })
+
+    expect(added.ok(), await added.text()).toBeTruthy()
+    const block = await added.json()
+
+    // Host bits cleared, so the range is stored once however it was typed.
+    expect(block.cidr).toBe('198.51.100.0/24')
+
+    const listed = await (await request.get('/v1/admin/blocks', { headers: asAdmin })).json()
+    expect(listed.some((b: { id: string }) => b.id === block.id)).toBe(true)
+
+    const removed = await request.delete(`/v1/admin/blocks/${block.id}`, { headers: asAdmin })
+    expect(removed.ok()).toBeTruthy()
+
+    const after = await (await request.get('/v1/admin/blocks', { headers: asAdmin })).json()
+    expect(after.some((b: { id: string }) => b.id === block.id)).toBe(false)
+  })
+
+  test('nonsense and a /0 range are both refused with an explanation', async ({ request }) => {
+    const nonsense = await request.post('/v1/admin/blocks', {
+      headers: asAdmin,
+      data: { cidr: 'not-an-address', reason: 'x' },
+    })
+
+    expect(nonsense.status()).toBe(400)
+    expect((await nonsense.json()).message).toContain('203.0.113')
+
+    const everything = await request.post('/v1/admin/blocks', {
+      headers: asAdmin,
+      data: { cidr: '0.0.0.0/0', reason: 'x' },
+    })
+
+    // Blocking everything locks out the administrator doing it, which is not a thing to discover
+    // by trying it.
+    expect(everything.status()).toBe(400)
+    expect((await everything.json()).message).toMatch(/every address/i)
+  })
+
+  test('a changed rate limit takes effect on the next request, then resets', async ({ request }) => {
+    const before = await (await request.get('/v1/admin/limits', { headers: asAdmin })).json()
+    const anonymous = before.find((l: { tier: string; action: string }) => l.tier === 'Anonymous' && l.action === '')
+
+    expect(anonymous).toBeTruthy()
+
+    try {
+      const saved = await request.put('/v1/admin/limits', {
+        headers: asAdmin,
+        data: { ...anonymous, perMinute: 1, isOverride: true },
+      })
+
+      expect(saved.ok(), await saved.text()).toBeTruthy()
+
+      const after = await (await request.get('/v1/admin/limits', { headers: asAdmin })).json()
+      const changed = after.find((l: { tier: string; action: string }) => l.tier === 'Anonymous' && l.action === '')
+
+      expect(changed.perMinute).toBe(1)
+
+      // The point of storing an override is that it is visibly different from configuration.
+      expect(changed.isOverride).toBe(true)
+    } finally {
+      // Reset even if an assertion failed, or every later anonymous test inherits a 1/min ceiling.
+      await request.delete('/v1/admin/limits/Anonymous/', { headers: asAdmin })
+    }
+
+    const restored = await (await request.get('/v1/admin/limits', { headers: asAdmin })).json()
+    const back = restored.find((l: { tier: string; action: string }) => l.tier === 'Anonymous' && l.action === '')
+
+    expect(back.perMinute).toBe(anonymous.perMinute)
+    expect(back.isOverride).toBe(false)
+  })
+
+  test('a limit that is not a number, tier or action is refused', async ({ request }) => {
+    const badTier = await request.put('/v1/admin/limits', {
+      headers: asAdmin,
+      data: { tier: 'Emperor', action: '', perMinute: 5, perHour: 5, perDay: 5, concurrent: 1,
+              maxUploadBytes: 1, maxPages: 1, maxBatch: 1, maxCharacters: 1, isOverride: true },
+    })
+
+    expect(badTier.status()).toBe(400)
+
+    const negative = await request.put('/v1/admin/limits', {
+      headers: asAdmin,
+      data: { tier: 'Free', action: '', perMinute: -1, perHour: 5, perDay: 5, concurrent: 1,
+              maxUploadBytes: 1, maxPages: 1, maxBatch: 1, maxCharacters: 1, isOverride: true },
+    })
+
+    // A negative ceiling refuses every request with a limit nobody can be under, silently.
+    expect(negative.status()).toBe(400)
+  })
+
+  test('the admin routes stay out of the public API document', async ({ request }) => {
+    const document = await (await request.get('/openapi/v1.json')).text()
+
+    // Publishing the shape of the administrative surface only helps someone probing for it.
+    expect(document).not.toContain('/v1/admin')
+  })
+})

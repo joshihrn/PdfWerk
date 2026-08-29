@@ -36,6 +36,9 @@ public sealed class SeoCatalogue
 
     public IReadOnlyList<SeoPage> Pages => Document.Routes;
 
+    /// <summary>The pages that belong in a sitemap and in on-page links to other tools.</summary>
+    public IEnumerable<SeoPage> PublicPages => Document.Routes.Where(p => !p.NoIndex);
+
     /// <summary>
     /// Loads the catalogue, or returns null when the file is absent — which is the normal state
     /// when the API runs without the web app built alongside it.
@@ -105,4 +108,14 @@ public sealed record SeoPage
 
     /// <summary>"website" or "webapp"; decides which schema.org type is declared.</summary>
     public string Type { get; init; } = "website";
+
+    /// <summary>
+    /// Keeps the page out of the sitemap and asks crawlers to skip it.
+    /// </summary>
+    /// <remarks>
+    /// The administrative page needs this. It is not a secret — the server refuses anyone without
+    /// a key regardless — but listing it in a sitemap advertises where to go looking, and having
+    /// it turn up in results serves nobody.
+    /// </remarks>
+    public bool NoIndex { get; init; }
 }

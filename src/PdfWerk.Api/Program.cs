@@ -224,7 +224,13 @@ static async Task BootstrapAdminAsync(WebApplication app)
     {
         var keys = app.Services.GetRequiredService<IApiKeyStore>();
 
-        if (await keys.AnyAdminAsync().ConfigureAwait(false))
+        // Keyed on whether this particular secret already works, not on whether any admin exists.
+        //
+        // "I set this key, so this key should work" is what an operator means, and it is also the
+        // way back in when the only admin key has been lost: set it, restart, sign in. Checking
+        // only for the existence of some admin would leave them locked out of their own service
+        // with the setting apparently applied.
+        if (await keys.ValidateAsync(options.BootstrapKey).ConfigureAwait(false) is { IsAdmin: true })
             return;
 
         await keys.CreateAdminAsync("bootstrap administrator", options.BootstrapKey).ConfigureAwait(false);

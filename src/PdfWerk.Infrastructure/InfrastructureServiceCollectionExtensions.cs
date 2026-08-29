@@ -93,9 +93,18 @@ public static class InfrastructureServiceCollectionExtensions
     /// Creates the schema if it is absent.
     /// </summary>
     /// <remarks>
-    /// Migrations rather than EnsureCreated. The admin tables were the first schema change after
-    /// release-shaped data existed, and EnsureCreated will not alter an existing database — it
-    /// would have left the new tables and the IsAdmin column silently absent.
+    /// Migrations rather than EnsureCreated, for Postgres. The admin tables were the first schema
+    /// change after release-shaped data existed, and EnsureCreated will not alter an existing
+    /// database — it would have left the new tables and the IsAdmin column silently absent.
+    ///
+    /// A migration carries the type names of the provider it was scaffolded against, so one set
+    /// cannot serve both providers. These are Postgres migrations, because Postgres is what gets
+    /// deployed; SQLite is the fallback for running without any configuration at all, where the
+    /// database is a scratch file, so it gets the schema straight from the model instead. That is
+    /// already what the tests do.
+    ///
+    /// The cost is real and worth naming: on SQLite a model change does not migrate an existing
+    /// file, it is simply absent from it. Hence the warning below rather than silence.
     /// </remarks>
     public static async Task InitialiseStorageAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -105,7 +114,20 @@ public static class InfrastructureServiceCollectionExtensions
         try
         {
             await using var db = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            await db.Database.MigrateAsync(ct).ConfigureAwait(false);
+
+            if (db.Database.IsNpgsql())
+            {
+                await db.Database.MigrateAsync(ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await db.Database.EnsureCreatedAsync(ct).ConfigureAwait(false);
+
+                logger.LogWarning(
+                    "Storage is {Provider}, so the schema comes from the model and is never " +
+                    "migrated. Set ConnectionStrings:Postgres for anything you intend to keep.",
+                    db.Database.ProviderName);
+            }
 
             logger.LogInformation("Storage ready ({Provider}).", db.Database.ProviderName);
 

@@ -1,0 +1,64 @@
+# Full stack: API + UI, Postgres for API keys, Redis for distributed rate limiting.
+#
+# The API runs without either of them — it falls back to SQLite and in-process limiting — but a
+# public deployment needs Redis, because in-process counters are enforced per instance and would
+# multiply the effective quota behind a load balancer.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__Redis: "redis:6379"
+      ConnectionStrings__Postgres: "Host=postgres;Database=pdfwerk;Username=pdfwerk;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+
+      # Behind this compose network the API sits behind no proxy, so forwarded headers are not
+      # trusted. Enable it only when a reverse proxy you control sets X-Forwarded-For, or callers
+      # can forge it and mint unlimited anonymous identities.
+      Client__TrustForwardedHeaders: "false"
+      Client__AddressSalt: "${ADDRESS_SALT:?set ADDRESS_SALT in .env}"
+
+      # Optional. Without a key, every endpoint works except summarise.
+      Ai__Gemini__ApiKey: "${GEMINI_API_KEY:-}"
+      Ai__Groq__ApiKey: "${GROQ_API_KEY:-}"
+      Ai__DefaultProvider: "${AI_PROVIDER:-gemini}"
+    volumes:
+      - pdfwerk-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pdfwerk
+      POSTGRES_USER: pdfwerk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pdfwerk-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdfwerk -d pdfwerk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Bounded memory with LRU eviction: rate-limit keys all carry expiries, so the cap is a
+    # safety net against a flood of distinct clients rather than a normal operating condition.
+    command: ["redis-server", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pdfwerk-data:
+  pdfwerk-pg:

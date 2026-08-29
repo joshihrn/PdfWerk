@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+web/public/pdfwerk-embed.js
+src/PdfWerk.Api/wwwroot/
+.git/
+.github/
+*.md
+!README.md
+.vs/
+.vscode/
+.idea/
+*.db
+*.user

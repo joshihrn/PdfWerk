@@ -187,6 +187,30 @@ store — including a hardening suite that feeds the endpoints malformed files, 
 replacement text, hostile field names and degenerate geometry. They need no network, no API key
 and no Docker: SQLite backs the key store and a fake provider stands in for the model.
 
+### End to end
+
+```bash
+cd e2e && npm ci && npx playwright install chromium && npm test
+```
+
+41 Playwright tests against a real running instance — 22 driving the HTTP API directly and 19
+driving the browser. They start the server themselves (or attach to one already on `:5272`),
+mint their own API key, and build their own PDF and `.docx` fixtures through the service, so
+there are no binary files checked in and nothing to set up first.
+
+| Command | What it does |
+| --- | --- |
+| `npm test` | Headless, both projects. What CI runs. |
+| `npm run watch` | Playwright UI mode: pick tests, watch them run, step back through any point in time |
+| `npm run slow` | Headed and slowed down, for watching a flow in a real browser |
+| `npm run api` / `npm run ui` | One project only |
+| `npm run report` | Opens the last HTML report |
+
+They run on a single worker on purpose. The service is rate limited per caller and parallel
+workers share one bucket, so concurrency makes tests fail on each other's quota instead of on
+their own behaviour — and those failures read as flakes. Traces, video and screenshots are kept
+for failures only.
+
 ## Deploying
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for DNS, TLS, and the two settings that decide whether your

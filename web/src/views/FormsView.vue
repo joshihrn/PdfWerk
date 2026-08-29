@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
 import ResultPane from '../components/ResultPane.vue'
 import {
@@ -58,6 +58,7 @@ const fields = ref<DraftField[]>([])
 const selectedId = ref<number | null>(null)
 const currentPage = ref(1)
 const scale = ref(1)
+const pageReady = ref(false)
 const nextId = ref(1)
 
 const canvas = ref<HTMLCanvasElement>()
@@ -155,6 +156,8 @@ watch(currentPage, () => renderPage())
 async function renderPage() {
   if (!files.value[0] || !canvas.value || !page.value) return
 
+  pageReady.value = false
+
   const pdfjs = await import('pdfjs-dist')
   pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.mjs?url')).default
 
@@ -162,9 +165,13 @@ async function renderPage() {
   const document = await pdfjs.getDocument({ data }).promise
   const rendered = await document.getPage(currentPage.value)
 
-  // Measured on the block-level wrapper: .designer is inline-block, so its own width
-  // reports the canvas rather than the space available to it.
-  const available = (surface.value?.clientWidth ?? 780) - 2
+  // Measured on the block-level wrapper, minus its padding.
+  //
+  // .designer is inline-block, so its own width reports the canvas rather than the space
+  // available. And clientWidth *includes* padding, so using it raw asks for a canvas wider
+  // than the content box — which `max-width: 100%` then clamps, squashing the page and
+  // throwing off every coordinate the designer computes.
+  const available = measureAvailableWidth()
   const viewport = rendered.getViewport({ scale: 1 })
   scale.value = Math.min(available / viewport.width, 1.6)
 
@@ -177,8 +184,55 @@ async function renderPage() {
   canvas.value.style.width = `${scaled.width / window.devicePixelRatio}px`
   canvas.value.style.height = `${scaled.height / window.devicePixelRatio}px`
 
+  // Before the await, not after. The canvas is visible the moment it has dimensions, so a
+  // click can land while the render is still in flight — and a stale scale at that instant
+  // puts the field in the wrong place.
+  syncScale()
+
   await rendered.render({ canvasContext: context, viewport: scaled, canvas: canvas.value }).promise
+  pageReady.value = true
+
+  // Trust the rendered element, not the intended size.
+  //
+  // `scale` converts between screen pixels and PDF points, and everything the designer does —
+  // placing a field, dragging it, drawing the overlay — depends on it being exactly right. The
+  // requested width is not reliable: `max-width: 100%` in the base stylesheet can clamp the
+  // canvas, and the container may still have been settling when it was measured. Either way the
+  // element ends up narrower than asked for, and every coordinate silently shifts.
+  syncScale()
 }
+
+/** Usable content width of the wrapper, excluding its own padding. */
+function measureAvailableWidth(): number {
+  if (!surface.value) return 780
+
+  const style = getComputedStyle(surface.value)
+  const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+
+  return Math.max(surface.value.clientWidth - padding, 240)
+}
+
+/** Recomputes the screen-pixels-per-point ratio from what is actually on screen. */
+function syncScale() {
+  if (!canvas.value || !page.value) return
+
+  const width = canvas.value.getBoundingClientRect().width
+  if (width > 0) scale.value = width / page.value.width
+}
+
+// Keeps the overlay aligned when the column is resized, which the intended-width approach
+// could not do at all.
+let observer: ResizeObserver | null = null
+
+onMounted(() => {
+  observer = new ResizeObserver(() => syncScale())
+  if (surface.value) observer.observe(surface.value)
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  observer = null
+})
 
 // ---- creating and moving -------------------------------------------------
 
@@ -417,7 +471,7 @@ async function fill(delivery: Delivery) {
         </template>
 
         <div ref="surface" class="designer-wrap">
-          <div class="designer" @click="onSurfaceClick">
+          <div class="designer" :data-ready="pageReady" @click="onSurfaceClick">
             <canvas ref="canvas"></canvas>
 
             <div

@@ -59,12 +59,33 @@ public static class ApiResults
                 meta));
         }
 
-        // Download sets a filename so the browser saves it; stream omits it so the document
-        // renders in place, which is what an embedded preview needs.
-        return Results.File(
-            artifact.Content,
-            artifact.ContentType,
-            fileDownloadName: delivery == DeliveryMode.Download ? artifact.FileName : null);
+        if (delivery == DeliveryMode.Download)
+            return Results.File(artifact.Content, artifact.ContentType, fileDownloadName: artifact.FileName);
+
+        // Stream renders in place, so the disposition is "inline" rather than "attachment" —
+        // but it still carries the name. Omitting it entirely means a client that later saves
+        // the previewed bytes has nothing to call the file, and the server's derived name is
+        // lost. Inline-with-filename gets both.
+        return new InlineDocument(artifact);
+    }
+
+    /// <summary>Writes the document inline, keeping its filename for anyone who saves it.</summary>
+    private sealed class InlineDocument(PdfArtifact artifact) : IResult
+    {
+        public async Task ExecuteAsync(HttpContext context)
+        {
+            var disposition = new System.Net.Mime.ContentDisposition
+            {
+                FileName = artifact.FileName,
+                Inline = true,
+            };
+
+            context.Response.ContentType = artifact.ContentType;
+            context.Response.ContentLength = artifact.ByteCount;
+            context.Response.Headers.ContentDisposition = disposition.ToString();
+
+            await context.Response.Body.WriteAsync(artifact.Content, context.RequestAborted).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

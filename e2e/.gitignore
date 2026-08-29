@@ -1,0 +1,5 @@
+node_modules/
+
+# Test output: traces, video and screenshots kept for failures, plus the HTML report.
+.artifacts/
+playwright-report/

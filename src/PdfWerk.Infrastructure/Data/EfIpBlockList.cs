@@ -49,15 +49,16 @@ public sealed class EfIpBlockList(
     {
         await using var context = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
 
+        // Ordered after materialising, not in SQL: SQLite refuses to ORDER BY a DateTimeOffset,
+        // and a block list is small enough that sorting it here costs nothing.
         var rows = await context.IpBlocks
             .AsNoTracking()
-            .OrderByDescending(b => b.CreatedAt)
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
         var now = DateTimeOffset.UtcNow;
 
-        return rows.Select(b => new IpBlockRecord(
+        return rows.OrderByDescending(b => b.CreatedAt).Select(b => new IpBlockRecord(
             b.Id,
             b.Cidr,
             b.Reason,

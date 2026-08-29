@@ -61,6 +61,57 @@ public sealed class EfApiKeyStore(
         return new IssuedApiKey(ToRecord(entity), secret);
     }
 
+    /// <summary>
+    /// Mints an administrator's key.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not reachable from the self-service endpoint: privilege has to be granted
+    /// from the host, never requested by a caller. The tier is Unlimited because an administrator
+    /// throttled out of their own portal during an incident is exactly when they need it.
+    ///
+    /// A secret can be supplied for bootstrapping from configuration; otherwise one is generated.
+    /// </remarks>
+    public async Task<IssuedApiKey> CreateAdminAsync(string label, string? secret = null, CancellationToken ct = default)
+    {
+        var value = string.IsNullOrWhiteSpace(secret) ? GenerateSecret() : secret.Trim();
+
+        if (value.Length < 24)
+            throw new PdfWerkException("An admin key must be at least 24 characters.");
+
+        // Validation rejects anything without the prefix before it will touch the database, so a
+        // bootstrap secret that lacks it would be created successfully and then never work — the
+        // worst kind of failure, because everything reports success.
+        if (!value.StartsWith(KeyPrefix, StringComparison.Ordinal))
+        {
+            throw new PdfWerkException(
+                $"An admin key must start with '{KeyPrefix}'. Set Admin:BootstrapKey to something " +
+                $"like '{KeyPrefix}' followed by at least 24 random characters.");
+        }
+
+        var entity = new ApiKeyEntity
+        {
+            Id = Guid.NewGuid(),
+            SecretHash = Hash(value),
+            Prefix = value[..Math.Min(11, value.Length)],
+            Label = label.Trim(),
+            Tier = QuotaTier.Unlimited,
+            IsAdmin = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        await using var db = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        db.ApiKeys.Add(entity);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return new IssuedApiKey(ToRecord(entity), value);
+    }
+
+    public async Task<bool> AnyAdminAsync(CancellationToken ct = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.ApiKeys.AnyAsync(k => k.IsAdmin && k.RevokedAt == null, ct).ConfigureAwait(false);
+    }
+
     public async Task<ApiKeyRecord?> ValidateAsync(string secret, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(secret) || !secret.StartsWith(KeyPrefix, StringComparison.Ordinal))
@@ -195,7 +246,7 @@ public sealed class EfApiKeyStore(
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret))).ToLowerInvariant();
 
     private static ApiKeyRecord ToRecord(ApiKeyEntity e) =>
-        new(e.Id, e.Label, e.Tier, e.CreatedAt, e.ExpiresAt, e.RevokedAt, e.LastUsedAt, e.TotalCalls);
+        new(e.Id, e.Label, e.Tier, e.CreatedAt, e.ExpiresAt, e.RevokedAt, e.LastUsedAt, e.TotalCalls, e.IsAdmin);
 }
 
 internal static class ApiKeyEntityExtensions

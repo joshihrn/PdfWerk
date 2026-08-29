@@ -1,3 +1,4 @@
+using PdfWerk.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PdfWerk.Core;
@@ -26,7 +27,9 @@ namespace PdfWerk.Infrastructure.RateLimiting;
 public sealed class RedisRateLimiter : IRateLimiter
 {
     private readonly IConnectionMultiplexer _redis;
-    private readonly RateLimitOptions _options;
+    // Read through the settings service rather than IOptions, so a limit changed from the admin
+    // portal applies to the next request instead of the next restart.
+    private readonly IRateLimitSettings _limits;
     private readonly ILogger<RedisRateLimiter> _logger;
 
     /// <summary>
@@ -98,20 +101,20 @@ public sealed class RedisRateLimiter : IRateLimiter
 
     public RedisRateLimiter(
         IConnectionMultiplexer redis,
-        IOptions<RateLimitOptions> options,
+        IRateLimitSettings limits,
         ILogger<RedisRateLimiter> logger)
     {
         _redis = redis;
-        _options = options.Value;
+        _limits = limits;
         _logger = logger;
     }
 
     public async Task<RateLimitDecision> AcquireAsync(ClientIdentity client, PdfWerkAction action, CancellationToken ct = default)
     {
-        if (!_options.Enabled || client.Tier == QuotaTier.Unlimited)
+        if (!_limits.Current.Enabled || client.Tier == QuotaTier.Unlimited)
             return RateLimitDecision.Allow(int.MaxValue, int.MaxValue, DateTimeOffset.UtcNow);
 
-        var limit = _options.Limit(client.Tier, action);
+        var limit = _limits.Current.Limit(client.Tier, action);
         var windows = Windows(limit);
 
         if (windows.Count == 0)
@@ -124,7 +127,7 @@ public sealed class RedisRateLimiter : IRateLimiter
             var db = _redis.GetDatabase();
 
             var keys = windows
-                .Select(w => (RedisKey)$"{_options.KeyPrefix}:{client.Id}:{action}:{w.Name}")
+                .Select(w => (RedisKey)$"{_limits.Current.KeyPrefix}:{client.Id}:{action}:{w.Name}")
                 .ToArray();
 
             var args = new List<RedisValue>
@@ -181,11 +184,11 @@ public sealed class RedisRateLimiter : IRateLimiter
 
     public async Task<IReadOnlyDictionary<string, int>> PeekAsync(ClientIdentity client, PdfWerkAction action, CancellationToken ct = default)
     {
-        var limit = _options.Limit(client.Tier, action);
+        var limit = _limits.Current.Limit(client.Tier, action);
         var windows = Windows(limit);
         var results = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        if (!_options.Enabled || client.Tier == QuotaTier.Unlimited)
+        if (!_limits.Current.Enabled || client.Tier == QuotaTier.Unlimited)
         {
             foreach (var window in windows)
                 results[window.Name] = int.MaxValue;
@@ -200,7 +203,7 @@ public sealed class RedisRateLimiter : IRateLimiter
 
             foreach (var window in windows)
             {
-                var key = (RedisKey)$"{_options.KeyPrefix}:{client.Id}:{action}:{window.Name}";
+                var key = (RedisKey)$"{_limits.Current.KeyPrefix}:{client.Id}:{action}:{window.Name}";
 
                 // Counting the live range leaves the set untouched, so a peek costs no quota.
                 var used = await db
@@ -228,7 +231,7 @@ public sealed class RedisRateLimiter : IRateLimiter
         if (limit.Concurrent <= 0)
             return null;
 
-        var key = (RedisKey)$"{_options.KeyPrefix}:{client.Id}:{action}:inflight";
+        var key = (RedisKey)$"{_limits.Current.KeyPrefix}:{client.Id}:{action}:inflight";
         var db = _redis.GetDatabase();
 
         // The expiry is a safety net: a process that dies mid-request must not leak a slot
@@ -272,7 +275,7 @@ public sealed class RedisRateLimiter : IRateLimiter
     /// </summary>
     private RateLimitDecision Fallback(PdfWerkAction action, string reason)
     {
-        if (!_options.FailClosed)
+        if (!_limits.Current.FailClosed)
             return RateLimitDecision.Allow(int.MaxValue, int.MaxValue, DateTimeOffset.UtcNow);
 
         _logger.LogWarning("Rejecting {Action} because {Reason}.", action, reason);

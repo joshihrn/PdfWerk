@@ -81,15 +81,21 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<IApiKeyStore, EfApiKeyStore>();
         services.AddSingleton<EfApiKeyStore>(sp => (EfApiKeyStore)sp.GetRequiredService<IApiKeyStore>());
+
+        // Singletons because each holds a cached snapshot consulted on every request: the block
+        // list, the effective limits, and the buffered log writer.
+        services.AddSingleton<IRequestLog, EfRequestLog>();
+        services.AddSingleton<IIpBlockList, EfIpBlockList>();
+        services.AddSingleton<IRateLimitSettings, EfRateLimitSettings>();
     }
 
     /// <summary>
     /// Creates the schema if it is absent.
     /// </summary>
     /// <remarks>
-    /// EnsureCreated is enough while the schema is new and there is no deployed data to migrate.
-    /// Before the first release that changes a table, this should be swapped for EF migrations —
-    /// EnsureCreated will not alter an existing schema, so a change would silently not apply.
+    /// Migrations rather than EnsureCreated. The admin tables were the first schema change after
+    /// release-shaped data existed, and EnsureCreated will not alter an existing database — it
+    /// would have left the new tables and the IsAdmin column silently absent.
     /// </remarks>
     public static async Task InitialiseStorageAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -99,9 +105,14 @@ public static class InfrastructureServiceCollectionExtensions
         try
         {
             await using var db = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            await db.Database.EnsureCreatedAsync(ct).ConfigureAwait(false);
+            await db.Database.MigrateAsync(ct).ConfigureAwait(false);
 
-            logger.LogInformation("Key store ready ({Provider}).", db.Database.ProviderName);
+            logger.LogInformation("Storage ready ({Provider}).", db.Database.ProviderName);
+
+            // The snapshots these hold are read on every request, so they have to be populated
+            // before the first one arrives rather than lazily on first miss.
+            await services.GetRequiredService<IIpBlockList>().RefreshAsync(ct).ConfigureAwait(false);
+            await services.GetRequiredService<IRateLimitSettings>().RefreshAsync(ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

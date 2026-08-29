@@ -1,3 +1,4 @@
+using PdfWerk.Core.Abstractions;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using PdfWerk.Core;
@@ -22,9 +23,10 @@ namespace PdfWerk.Infrastructure.RateLimiting;
 /// and the memory is bounded by the day limit.
 /// </para>
 /// </remarks>
-public sealed class InMemoryRateLimiter(IOptions<RateLimitOptions> options) : IRateLimiter, IDisposable
+public sealed class InMemoryRateLimiter(IRateLimitSettings limits) : IRateLimiter, IDisposable
 {
-    private readonly RateLimitOptions _options = options.Value;
+    // Read through the settings service rather than IOptions, so a limit changed from the admin
+    // portal applies to the next request instead of the next restart.
     private readonly ConcurrentDictionary<string, Bucket> _buckets = new(StringComparer.Ordinal);
 
     /// <summary>Entries untouched for this long are eligible for eviction.</summary>
@@ -50,10 +52,10 @@ public sealed class InMemoryRateLimiter(IOptions<RateLimitOptions> options) : IR
 
     public Task<RateLimitDecision> AcquireAsync(ClientIdentity client, PdfWerkAction action, CancellationToken ct = default)
     {
-        if (!_options.Enabled || client.Tier == QuotaTier.Unlimited)
+        if (!limits.Current.Enabled || client.Tier == QuotaTier.Unlimited)
             return Task.FromResult(RateLimitDecision.Allow(int.MaxValue, int.MaxValue, DateTimeOffset.UtcNow));
 
-        var limit = _options.Limit(client.Tier, action);
+        var limit = limits.Current.Limit(client.Tier, action);
         var windows = WindowsOf(limit);
         var bucket = _buckets.GetOrAdd(Key(client, action), _ => new Bucket());
 
@@ -114,13 +116,13 @@ public sealed class InMemoryRateLimiter(IOptions<RateLimitOptions> options) : IR
 
     public Task<IReadOnlyDictionary<string, int>> PeekAsync(ClientIdentity client, PdfWerkAction action, CancellationToken ct = default)
     {
-        var limit = _options.Limit(client.Tier, action);
+        var limit = limits.Current.Limit(client.Tier, action);
         var windows = WindowsOf(limit);
         var now = DateTimeOffset.UtcNow;
 
         IReadOnlyDictionary<string, int> remaining;
 
-        if (!_options.Enabled || client.Tier == QuotaTier.Unlimited)
+        if (!limits.Current.Enabled || client.Tier == QuotaTier.Unlimited)
         {
             remaining = windows.ToDictionary(w => w.Name, _ => int.MaxValue, StringComparer.Ordinal);
             return Task.FromResult(remaining);

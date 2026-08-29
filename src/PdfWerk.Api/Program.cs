@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Text.Json.Serialization;
 using PdfWerk.Ai;
 using PdfWerk.Api.Endpoints;
@@ -15,6 +16,19 @@ var builder = WebApplication.CreateBuilder(args);
 // ---- configuration ------------------------------------------------------
 
 builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));
+builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
+
+// Only registered when a retention window is set. Indefinite is the default, and a background
+// loop that exists solely to decide it has nothing to do is noise.
+var retentionDays = builder.Configuration.GetValue<int>($"{AdminOptions.SectionName}:RetentionDays");
+
+if (retentionDays > 0)
+{
+    builder.Services.AddHostedService(provider => new RequestLogPruner(
+        provider.GetRequiredService<IRequestLog>(),
+        retentionDays,
+        provider.GetRequiredService<ILogger<RequestLogPruner>>()));
+}
 builder.Services.Configure<ClientOptions>(builder.Configuration.GetSection(ClientOptions.SectionName));
 builder.Services.Configure<LibreOfficeOptions>(builder.Configuration.GetSection(LibreOfficeOptions.SectionName));
 
@@ -123,12 +137,18 @@ var app = builder.Build();
 // ---- pipeline -----------------------------------------------------------
 
 app.UseCors();
+
+// Ahead of everything else: a blocked caller should not reach the rate limiter, the key store or
+// the PDF engine, and the log should record what they attempted regardless of how it ended.
+app.UseMiddleware<RequestAuditMiddleware>();
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapOpenApi();
 app.MapScalarApiReference("/docs");
 
+app.MapAdminEndpoints();
 app.MapPdfEndpoints();
 app.MapPageEndpoints();
 app.MapKeyEndpoints();
@@ -142,6 +162,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "pdfwerk" 
 app.MapSeoEndpoints();
 
 await InfrastructureServiceCollectionExtensions.InitialiseStorageAsync(app.Services);
+await BootstrapAdminAsync(app);
 
 WarnIfLimiterIsSingleProcess(app);
 
@@ -166,6 +187,58 @@ static void WarnIfLimiterIsSingleProcess(WebApplication app)
             "Rate limiting is running in memory. Quotas are enforced per process, so running " +
             "more than one instance multiplies every limit. Set ConnectionStrings:Redis before " +
             "exposing this publicly.");
+}
+
+/// <summary>
+/// Mints the first administrator's key from configuration, if one is set and none exists yet.
+/// </summary>
+/// <remarks>
+/// The chicken-and-egg problem: the admin API is the only way to grant admin rights, and it can
+/// only be reached with a key that already has them. So the first one comes from the host, where
+/// whoever runs the service already has full control anyway.
+///
+/// It runs once. With a key already in place the setting is ignored, so leaving it in a config
+/// file does not keep re-creating a credential — but it should still be removed, because a
+/// bootstrap secret left in configuration is a standing back door.
+/// </remarks>
+static async Task BootstrapAdminAsync(WebApplication app)
+{
+    var options = app.Services.GetRequiredService<IOptions<AdminOptions>>().Value;
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PdfWerk.Admin");
+
+    if (string.IsNullOrWhiteSpace(options.BootstrapKey))
+    {
+        var store = app.Services.GetRequiredService<IApiKeyStore>();
+
+        if (!await store.AnyAdminAsync().ConfigureAwait(false))
+        {
+            logger.LogInformation(
+                "No administrator key exists. Set Admin:BootstrapKey to a secret beginning 'pw_' " +
+                "and at least 24 characters long, then restart to create one.");
+        }
+
+        return;
+    }
+
+    try
+    {
+        var keys = app.Services.GetRequiredService<IApiKeyStore>();
+
+        if (await keys.AnyAdminAsync().ConfigureAwait(false))
+            return;
+
+        await keys.CreateAdminAsync("bootstrap administrator", options.BootstrapKey).ConfigureAwait(false);
+
+        // The secret itself is never logged: it came from configuration, so whoever needs it has
+        // it already, and an audit log is a poor place to keep a credential.
+        logger.LogWarning(
+            "Created the first administrator key from configuration. Remove Admin:BootstrapKey now " +
+            "that it exists — a bootstrap secret left in place is a standing back door.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Could not create the bootstrap administrator key.");
+    }
 }
 
 /// <summary>Exposed so integration tests can spin the host up in-process.</summary>

@@ -81,6 +81,12 @@ public sealed class ClientResolver(IApiKeyStore keys, IOptions<ClientOptions> op
             : null;
     }
 
+    /// <summary>
+    /// The caller's address as text. Public because the audit log needs the raw value — the one
+    /// place in the system that does. Everything else works from the salted hash below.
+    /// </summary>
+    public string AddressFor(HttpContext context) => AddressOf(context);
+
     private string AddressOf(HttpContext context)
     {
         if (_options.TrustForwardedHeaders &&

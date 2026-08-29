@@ -20,10 +20,11 @@ public sealed class ActionRunner(
     IRateLimiter limiter,
     ClientResolver clients,
     IApiKeyStore keys,
-    IOptions<RateLimitOptions> options,
+    IRateLimitSettings limits,
     ILogger<ActionRunner> logger)
 {
-    private readonly RateLimitOptions _options = options.Value;
+    // Read through the settings service rather than IOptions, so a limit changed from the admin
+    // portal applies to the next request instead of the next restart.
 
     public async Task<IResult> RunAsync(
         HttpContext context,
@@ -32,8 +33,14 @@ public sealed class ActionRunner(
     {
         var ct = context.RequestAborted;
         var client = await clients.ResolveAsync(context, ct).ConfigureAwait(false);
-        var limit = _options.Limit(client.Tier, action);
+        var limit = limits.Current.Limit(client.Tier, action);
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        // Left for the audit middleware, which wraps this and cannot resolve the caller itself
+        // without doing the key lookup a second time.
+        context.Items["pdfwerk.clientId"] = client.Id;
+        context.Items["pdfwerk.apiKeyId"] = client.ApiKeyId;
+        context.Items["pdfwerk.action"] = action;
 
         var decision = await limiter.AcquireAsync(client, action, ct).ConfigureAwait(false);
         ApiResults.WriteQuotaHeaders(context.Response, action, decision);

@@ -91,7 +91,7 @@ public static class PdfEndpoints
 
         v1.MapGet("/quota", async (HttpContext context, IRateLimiter limiter, ClientResolver clients) =>
             {
-                var client = clients.Resolve(context);
+                var client = await clients.ResolveAsync(context, context.RequestAborted).ConfigureAwait(false);
 
                 var quotas = new List<object>();
                 foreach (var descriptor in ActionCatalog.All)

@@ -4,6 +4,7 @@ using PdfWerk.Api.Endpoints;
 using PdfWerk.Api.Infrastructure;
 using PdfWerk.Core.Abstractions;
 using PdfWerk.Core.Limits;
+using PdfWerk.Infrastructure;
 using PdfWerk.Infrastructure.RateLimiting;
 using PdfWerk.Pdf;
 using PdfWerk.Pdf.Word;
@@ -41,7 +42,10 @@ builder.Services.AddPdfWerkAi(builder.Configuration);
 
 // ---- request plumbing ---------------------------------------------------
 
-builder.Services.AddSingleton<IRateLimiter, InMemoryRateLimiter>();
+// Picks Redis + Postgres when their connection strings are present, and single-process
+// fallbacks otherwise, so the same binary runs locally and in production.
+builder.Services.AddPdfWerkInfrastructure(builder.Configuration);
+
 builder.Services.AddSingleton<ClientResolver>();
 builder.Services.AddSingleton<ActionRunner>();
 
@@ -101,9 +105,12 @@ app.MapOpenApi();
 app.MapScalarApiReference("/docs");
 
 app.MapPdfEndpoints();
+app.MapKeyEndpoints();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "pdfwerk" }))
    .ExcludeFromDescription();
+
+await InfrastructureServiceCollectionExtensions.InitialiseStorageAsync(app.Services);
 
 WarnIfLimiterIsSingleProcess(app);
 
@@ -126,7 +133,8 @@ static void WarnIfLimiterIsSingleProcess(WebApplication app)
         .CreateLogger("PdfWerk.Startup")
         .LogWarning(
             "Rate limiting is running in memory. Quotas are enforced per process, so running " +
-            "more than one instance multiplies every limit. Configure Redis before exposing this publicly.");
+            "more than one instance multiplies every limit. Set ConnectionStrings:Redis before " +
+            "exposing this publicly.");
 }
 
 /// <summary>Exposed so integration tests can spin the host up in-process.</summary>

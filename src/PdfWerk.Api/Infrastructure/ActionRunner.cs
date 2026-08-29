@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using PdfWerk.Core;
+using PdfWerk.Core.Abstractions;
 using PdfWerk.Core.Limits;
 using PdfWerk.Pdf;
 
@@ -18,6 +19,7 @@ namespace PdfWerk.Api.Infrastructure;
 public sealed class ActionRunner(
     IRateLimiter limiter,
     ClientResolver clients,
+    IApiKeyStore keys,
     IOptions<RateLimitOptions> options,
     ILogger<ActionRunner> logger)
 {
@@ -28,9 +30,10 @@ public sealed class ActionRunner(
         PdfWerkAction action,
         Func<ActionLimit, CancellationToken, Task<IResult>> handler)
     {
-        var client = clients.Resolve(context);
-        var limit = _options.Limit(client.Tier, action);
         var ct = context.RequestAborted;
+        var client = await clients.ResolveAsync(context, ct).ConfigureAwait(false);
+        var limit = _options.Limit(client.Tier, action);
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var decision = await limiter.AcquireAsync(client, action, ct).ConfigureAwait(false);
         ApiResults.WriteQuotaHeaders(context.Response, action, decision);
@@ -40,6 +43,7 @@ public sealed class ActionRunner(
             logger.LogInformation(
                 "Rate limited {Client} on {Action} ({Window}).", client.Label, action, decision.Window);
 
+            Record(client, action, allowed: false, context, started);
             return ApiResults.TooManyRequests(action, decision);
         }
 
@@ -48,7 +52,9 @@ public sealed class ActionRunner(
 
         try
         {
-            return await handler(limit, ct).ConfigureAwait(false);
+            var result = await handler(limit, ct).ConfigureAwait(false);
+            Record(client, action, allowed: true, context, started);
+            return result;
         }
         catch (PdfWerkException ex)
         {
@@ -71,6 +77,25 @@ public sealed class ActionRunner(
                 new { error = "internal_error", action = action.ToString(), message = "Something went wrong handling this document." },
                 statusCode: StatusCodes.Status500InternalServerError);
         }
+    }
+
+    /// <summary>
+    /// Files a usage record. Fire and forget by design: history is useful, but it must never be
+    /// able to fail or delay the work the caller actually asked for.
+    /// </summary>
+    private void Record(ClientIdentity client, PdfWerkAction action, bool allowed, HttpContext context, long started)
+    {
+        var elapsed = (int)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+
+        _ = keys.RecordUsageAsync(
+            client.ApiKeyId,
+            client.Id,
+            action,
+            allowed,
+            (int)Math.Clamp(context.Request.ContentLength ?? 0, 0, int.MaxValue),
+            (int)Math.Clamp(context.Response.ContentLength ?? 0, 0, int.MaxValue),
+            elapsed,
+            CancellationToken.None);
     }
 
     private static string Slug(PdfWerkException ex) => ex switch

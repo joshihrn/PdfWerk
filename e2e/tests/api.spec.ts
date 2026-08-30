@@ -777,7 +777,7 @@ test.describe('response shape', () => {
  * a link to any page previews and indexes as itself rather than as the generic shell.
  */
 test.describe('search engine metadata', () => {
-  const ROUTES = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
+  const ROUTES = ['/', '/create', '/word', '/edit', '/annotate', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
 
   test('every page carries its own title and description', async ({ request }) => {
     const seen = new Map<string, string>()
@@ -1220,5 +1220,82 @@ test.describe('contact form', () => {
     // the most attractive thing here to abuse, and it would otherwise be the only unmetered
     // endpoint on the service.
     expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0)
+  })
+})
+
+test.describe('annotate', () => {
+  /**
+   * Writing into blank space, which /edit/text cannot do: it can only rewrite words already on
+   * the page.
+   */
+  const draw = (items: unknown[]) => JSON.stringify({ items })
+
+  test('text can be added where there was none', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'A mostly empty page.', 'Contract')
+
+    const response = await request.post('/v1/annotate', {
+      headers: { 'X-Api-Key': key },
+      multipart: {
+        file: { name: 'contract.pdf', mimeType: 'application/pdf', buffer: pdf },
+        request: draw([{ type: 'Text', page: 1, x: 72, y: 400, text: 'Ada Lovelace' }]),
+      },
+    })
+
+    expect(response.status()).toBe(200)
+
+    const returned = Buffer.from(await response.body())
+    expect(returned.subarray(0, 5).toString('ascii')).toBe('%PDF-')
+
+    // Round-tripped through inspect rather than trusting the status code.
+    const inspected = await request.post('/v1/inspect', {
+      headers: { 'X-Api-Key': key },
+      multipart: { file: { name: 'out.pdf', mimeType: 'application/pdf', buffer: returned } },
+    })
+
+    expect((await inspected.json()).pageCount).toBe(1)
+  })
+
+  test('a page that does not exist is refused with a readable message', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'One page only.', 'Contract')
+
+    const response = await request.post('/v1/annotate', {
+      headers: { 'X-Api-Key': key },
+      multipart: {
+        file: { name: 'contract.pdf', mimeType: 'application/pdf', buffer: pdf },
+        request: draw([{ type: 'Text', page: 9, x: 72, y: 400, text: 'Nowhere' }]),
+      },
+    })
+
+    expect(response.status()).toBe(400)
+    expect((await response.json()).message).toMatch(/out of range/i)
+  })
+
+  test('an empty request says what is missing', async ({ request }) => {
+    const key = await apiKey(request)
+    const pdf = await makePdf(request, key, 'One page only.', 'Contract')
+
+    const response = await request.post('/v1/annotate', {
+      headers: { 'X-Api-Key': key },
+      multipart: {
+        file: { name: 'contract.pdf', mimeType: 'application/pdf', buffer: pdf },
+        request: draw([]),
+      },
+    })
+
+    expect(response.status()).toBe(400)
+    expect((await response.json()).message).toMatch(/at least one/i)
+  })
+
+  test('it appears in the action catalogue', async ({ request }) => {
+    const actions = await (await request.get('/v1/actions')).json()
+    const annotate = actions.find((a: { action: string }) => a.action === 'Annotate')
+
+    expect(annotate, 'Annotate is missing from the catalogue').toBeTruthy()
+    expect(annotate.slug).toBe('annotate')
+
+    // Drawing is local and deterministic; flagging it as AI would put it behind a provider.
+    expect(annotate.requiresAi).toBe(false)
   })
 })

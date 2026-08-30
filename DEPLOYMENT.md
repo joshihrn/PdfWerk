@@ -221,6 +221,41 @@ stop startup, because anonymous callers do not need the database. The consequenc
 broken database looks like a perfectly healthy site that returns 500 on every write, so
 `Storage ready` in the log is the thing to check, not the status code on `/health`.
 
+### Telemetry
+
+An Application Insights component, `pdfwerk-insights`, backed by the `pdfwerk-logs` workspace in
+the same resource group. The workspace keeps 30 days and is capped at 0.5 GB a day, which is well
+inside the free allowance at this traffic and stops a runaway loop turning into a bill.
+
+Telemetry is off unless `ApplicationInsights:ConnectionString` (or the
+`APPLICATIONINSIGHTS_CONNECTION_STRING` environment variable) is set, so a self-hosted copy sends
+nothing anywhere and the test suite needs no resource to run against.
+
+`ApplicationInsightsAgent_EXTENSION_VERSION` is set to `disabled` deliberately: the SDK is
+compiled into the app, and letting the platform's own agent attach as well double-counts every
+request.
+
+`ILogger` output flows here too, which is the point. A caught-and-logged failure is invisible
+otherwise — see the note above about `/health` returning 200 while every write failed.
+
+### Building the image
+
+```bash
+az acr build --registry pdfwerkacr --image pdfwerk:latest --file Dockerfile .
+```
+
+Two things about this command have wasted time and are worth stating.
+
+The CLI crashes while streaming the build log — a `UnicodeEncodeError` on a tick character under
+the console's code page — and **still exits 0**. The exit code says nothing. Check
+`az acr repository show -n pdfwerkacr --image pdfwerk:latest --query lastUpdateTime`, or
+`az acr task list-runs`, and trust that instead.
+
+The whole working tree is uploaded before the build starts, minus `.dockerignore`. A stray file
+that disappears mid-upload aborts it, which is what SQLite's `-shm` and `-wal` sidecars did while
+a development server was running. Both are excluded now, along with the Playwright report, which
+was tens of megabytes of screenshots being shipped to a build that has no use for them.
+
 ### Settings that are not in source control
 
 Four values are set on the app rather than committed, because three are secrets and the fourth is

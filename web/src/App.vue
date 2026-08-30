@@ -281,17 +281,41 @@ const nav = [
   color: var(--fg-muted);
 }
 
+/*
+ * A bordered control rather than another muted nav link.
+ *
+ * Sitting among the tool links it read as one more tool, which is the opposite of the point: it
+ * is how you reach a person, and someone deciding whether to trust this with a document wants to
+ * see that before they upload anything. Outlined rather than solid so it still loses to the
+ * primary action on each page.
+ */
 .app-nav__contact {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
+  padding: 5px var(--s-3);
   font-size: var(--t-13);
-  color: var(--fg-muted);
+  font-weight: var(--w-medium);
+  color: var(--link);
+  background: color-mix(in srgb, var(--link) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--link) 42%, transparent);
+  border-radius: var(--r-md);
+  white-space: nowrap;
 }
 
 .app-nav__contact svg { width: 15px; height: 15px; }
 
-.app-nav__contact:hover { color: var(--fg); text-decoration: none; }
+.app-nav__contact:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--link) 16%, transparent);
+  border-color: var(--link);
+  text-decoration: none;
+}
+
+.app-nav__contact.router-link-active {
+  background: color-mix(in srgb, var(--link) 18%, transparent);
+  border-color: var(--link);
+}
 
 .app-nav__tier:hover { text-decoration: none; }
 
@@ -378,5 +402,6 @@ const nav = [
   /* The label goes, the envelope stays. Dropping contact entirely on a phone would remove it
      from exactly the visitors least likely to scroll to the footer for it. */
   .app-nav__contact span { display: none; }
+  .app-nav__contact { padding: 5px var(--s-2); }
 }
 </style>

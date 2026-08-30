@@ -348,13 +348,13 @@ onBeforeUnmount(() => observer?.disconnect())
 
 .picker__run:hover,
 .picker__run:focus-visible {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  outline: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--link) 22%, transparent);
+  outline: 1px solid var(--link);
 }
 
 /* Already spoken for by a replacement, so it reads as changed without being opened. */
 .picker__run--edited {
-  background: color-mix(in srgb, var(--ok-fg, #16a34a) 20%, transparent);
+  background: color-mix(in srgb, var(--ok-fg) 20%, transparent);
 }
 
 /* A text cursor over the page, so it reads as somewhere you can write. */
@@ -370,8 +370,8 @@ onBeforeUnmount(() => observer?.disconnect())
   color: var(--fg);
   white-space: pre;
   pointer-events: none;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--link) 55%, transparent);
 }
 
 .picker__input {
@@ -381,7 +381,7 @@ onBeforeUnmount(() => observer?.disconnect())
   line-height: 1;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--link);
   border-radius: 2px;
 }
 

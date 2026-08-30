@@ -280,7 +280,7 @@ async function run(delivery: Delivery) {
 
 .placed__pick--on {
   color: var(--fg);
-  border-color: var(--accent);
+  border-color: var(--link);
 }
 
 /* One line only: a long note would otherwise push the remove button off the row. */

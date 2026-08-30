@@ -90,6 +90,10 @@ public sealed class PdfComposer : IPdfComposer
             ? MigraOrientation.Landscape
             : MigraOrientation.Portrait;
 
+        // PageFormat alone leaves PageWidth reading as zero until render time, and the table
+        // writer needs a real width while the document is still being built.
+        PageGeometry.ApplyExplicitSize(setup);
+
         var margin = Unit.FromMillimeter(request.MarginMm);
         setup.LeftMargin = margin;
         setup.RightMargin = margin;

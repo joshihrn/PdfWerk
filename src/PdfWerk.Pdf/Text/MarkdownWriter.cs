@@ -283,9 +283,7 @@ internal sealed class MarkdownWriter(Section section, double baseFontSize)
         table.Rows.LeftIndent = 0;
 
         // MigraDoc needs explicit column widths, so divide the printable width evenly.
-        var usable = _section.PageSetup.PageWidth.Point
-                     - _section.PageSetup.LeftMargin.Point
-                     - _section.PageSetup.RightMargin.Point;
+        var usable = PageGeometry.ContentWidth(_section.PageSetup);
         for (var c = 0; c < columns; c++)
             table.AddColumn(Unit.FromPoint(usable / columns));
 

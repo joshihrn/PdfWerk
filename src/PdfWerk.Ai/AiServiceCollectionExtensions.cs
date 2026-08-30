@@ -35,6 +35,7 @@ public static class AiServiceCollectionExtensions
 
         services.AddSingleton<IAiProviderRegistry, AiProviderRegistry>();
         services.AddSingleton<IPdfSummarizer, PdfSummarizer>();
+        services.AddSingleton<IDocumentDrafter, DocumentDrafter>();
 
         return services;
     }

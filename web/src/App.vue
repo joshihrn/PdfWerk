@@ -114,6 +114,21 @@ const nav = [
       </nav>
 
       <div class="app-nav__end">
+        <!--
+          Contact sits in the header rather than only in the footer. Someone deciding whether to
+          trust a tool with their document wants to see there is a person behind it before they
+          upload anything, and the footer is below the fold on every tool page.
+        -->
+        <RouterLink to="/contact" class="app-nav__contact">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="1.6" y="3.4" width="12.8" height="9.2" rx="1.4"
+                  fill="none" stroke="currentColor" stroke-width="1.3" />
+            <path d="M2 4.4 8 8.8l6-4.4" fill="none" stroke="currentColor"
+                  stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Contact</span>
+        </RouterLink>
+
         <a class="app-nav__doc" href="/docs" target="_blank" rel="noopener">API<span aria-hidden="true"> ↗</span></a>
 
         <RouterLink to="/api" class="app-nav__tier">
@@ -265,6 +280,18 @@ const nav = [
   color: var(--fg-muted);
 }
 
+.app-nav__contact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-13);
+  color: var(--fg-muted);
+}
+
+.app-nav__contact svg { width: 15px; height: 15px; }
+
+.app-nav__contact:hover { color: var(--fg); text-decoration: none; }
+
 .app-nav__tier:hover { text-decoration: none; }
 
 .app-nav__theme {
@@ -346,5 +373,9 @@ const nav = [
   .app-nav__inner { padding: 0 var(--s-4); gap: var(--s-3); }
   .app-main { padding: var(--s-6) var(--s-4) var(--s-12); }
   .app-nav__doc { display: none; }
+
+  /* The label goes, the envelope stays. Dropping contact entirely on a phone would remove it
+     from exactly the visitors least likely to scroll to the footer for it. */
+  .app-nav__contact span { display: none; }
 }
 </style>

@@ -107,6 +107,11 @@ public sealed class OpenXmlWordConverter : IWordConverter
 
         // Sensible A4 defaults, overridden by whatever the document actually declares.
         setup.PageFormat = PageFormat.A4;
+
+        // Explicit dimensions up front, because a .docx need not declare a page size and the
+        // format name on its own leaves PageWidth reading as zero.
+        PageGeometry.ApplyExplicitSize(setup);
+
         var margin = Unit.FromMillimeter(20);
         setup.LeftMargin = setup.RightMargin = setup.TopMargin = setup.BottomMargin = margin;
 
@@ -601,9 +606,7 @@ public sealed class OpenXmlWordConverter : IWordConverter
         table.Borders.Color = Colors.Silver;
         table.Rows.LeftIndent = 0;
 
-        var usable = section.PageSetup.PageWidth.Point
-                     - section.PageSetup.LeftMargin.Point
-                     - section.PageSetup.RightMargin.Point;
+        var usable = PageGeometry.ContentWidth(section.PageSetup);
 
         foreach (var width in ColumnWidths(source, columnCount, usable))
             table.AddColumn(Unit.FromPoint(width));

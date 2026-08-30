@@ -136,6 +136,37 @@ public static class PdfEndpoints
             .WithName("CreateFromText")
             .WithSummary("Render text or Markdown into a new PDF.");
 
+        /*
+         * Returns Markdown, not a PDF.
+         *
+         * A drafted document is a first attempt at someone else's words, and handing back a
+         * finished file makes correcting it mean starting again. Returning the draft lets the
+         * caller read it, change what is wrong, and then render through /create/text — which is
+         * also why drafting does not need its own rendering options.
+         */
+        v1.MapPost("/create/draft", (
+                HttpContext context,
+                DraftRequest request,
+                ActionRunner runner,
+                IDocumentDrafter drafter) =>
+                runner.RunAsync(context, PdfWerkAction.DraftDocument, async (limit, ct) =>
+                {
+                    RequestGuard.RequireTextBudget(request.Brief, limit);
+
+                    var draft = await drafter
+                        .DraftAsync(request.Brief, request.Title, request.Provider, ct)
+                        .ConfigureAwait(false);
+
+                    return Results.Ok(new
+                    {
+                        content = draft.Content,
+                        model = draft.Model,
+                        provider = draft.Provider,
+                    });
+                }))
+            .WithName("DraftDocument")
+            .WithSummary("Draft a document body from a brief. Returns Markdown to review and render.");
+
         v1.MapPost("/create/word", (
                 HttpContext context,
                 IFormFile file,

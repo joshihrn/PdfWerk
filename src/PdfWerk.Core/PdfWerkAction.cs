@@ -43,6 +43,16 @@ public enum PdfWerkAction
     Protect,
 
     /// <summary>
+    /// Draft a document body from a brief, before rendering it.
+    /// </summary>
+    /// <remarks>
+    /// Metered apart from <see cref="CreateFromText"/> even though it ends in the same render.
+    /// Rendering is deterministic and costs nothing; drafting calls a provider and does. Sharing
+    /// one limit would let a caller spend the AI budget at the rate of a plain render.
+    /// </remarks>
+    DraftDocument,
+
+    /// <summary>
     /// Send a message from the contact form.
     /// </summary>
     /// <remarks>
@@ -82,6 +92,8 @@ public static class ActionCatalog
             "Combine several PDFs into a single document, in order.", false),
         new(PdfWerkAction.Summarize, "summarize", "Summarize a PDF",
             "Extract the text and produce a structured AI summary.", true),
+        new(PdfWerkAction.DraftDocument, "create/draft", "Draft a PDF from a prompt",
+            "Describe the document you want and have it written, then rendered.", true),
         new(PdfWerkAction.Inspect, "inspect", "Inspect a PDF",
             "Report page count, metadata and the AcroForm field inventory.", false),
         new(PdfWerkAction.Split, "split", "Split a PDF",

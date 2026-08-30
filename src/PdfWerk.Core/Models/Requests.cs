@@ -39,11 +39,19 @@ public sealed record CreateFromTextRequest
     /// <summary>Render "Page N of M" in the footer.</summary>
     public bool PageNumbers { get; init; } = true;
 
-    /// <summary>
-    /// When set, the content is treated as a brief and an AI provider drafts the document
-    /// body before it is rendered. Requires a configured provider.
-    /// </summary>
-    public bool DraftWithAi { get; init; }
+}
+
+/// <summary>A brief to draft a document from.</summary>
+public sealed record DraftRequest
+{
+    /// <summary>What the document should say, in the caller's own words.</summary>
+    public required string Brief { get; init; }
+
+    /// <summary>Steers the draft. Printed by the composer later, not by the drafter.</summary>
+    public string? Title { get; init; }
+
+    /// <summary>Provider key, or null for the configured default.</summary>
+    public string? Provider { get; init; }
 }
 
 /// <summary>One find-and-replace instruction for <see cref="PdfWerkAction.EditText"/>.</summary>

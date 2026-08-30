@@ -129,6 +129,11 @@ public sealed class RateLimitOptions
                     PerMinute = 2, PerHour = 8, PerDay = 20, Concurrent = 1,
                     MaxUploadBytes = 8 * 1024 * 1024, MaxPages = 30, MaxBatch = 1, MaxCharacters = 60_000,
                 },
+                [nameof(PdfWerkAction.DraftDocument)] = new ActionLimit
+                {
+                    PerMinute = 2, PerHour = 8, PerDay = 20, Concurrent = 1,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 8_000,
+                },
                 [nameof(PdfWerkAction.CreateFromWord)] = new ActionLimit
                 {
                     PerMinute = 3, PerHour = 20, PerDay = 60, Concurrent = 1,
@@ -170,6 +175,11 @@ public sealed class RateLimitOptions
                     PerMinute = 6, PerHour = 60, PerDay = 250, Concurrent = 2,
                     MaxUploadBytes = 20 * 1024 * 1024, MaxPages = 150, MaxBatch = 1, MaxCharacters = 300_000,
                 },
+                [nameof(PdfWerkAction.DraftDocument)] = new ActionLimit
+                {
+                    PerMinute = 6, PerHour = 60, PerDay = 250, Concurrent = 2,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 8_000,
+                },
                 [nameof(PdfWerkAction.CreateFromWord)] = new ActionLimit
                 {
                     PerMinute = 10, PerHour = 120, PerDay = 500, Concurrent = 2,
@@ -210,6 +220,11 @@ public sealed class RateLimitOptions
                 {
                     PerMinute = 30, PerHour = 600, PerDay = 5_000, Concurrent = 8,
                     MaxUploadBytes = 100 * 1024 * 1024, MaxPages = 1_000, MaxBatch = 1, MaxCharacters = 2_000_000,
+                },
+                [nameof(PdfWerkAction.DraftDocument)] = new ActionLimit
+                {
+                    PerMinute = 30, PerHour = 600, PerDay = 5_000, Concurrent = 8,
+                    MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 8_000,
                 },
             },
         };

@@ -245,4 +245,141 @@ public class WordConversionTests
         var ex = await Assert.ThrowsAsync<PdfWerkException>(() => converter.ConvertAsync([1, 2, 3], "x.docx"));
         Assert.Contains("not available", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ---- merged cells ----------------------------------------------------
+
+    /// <summary>
+    /// These assert on the layout rather than on text pulled back out of the PDF.
+    /// </summary>
+    /// <remarks>
+    /// The fault being guarded against is a merged cell leaving empty bordered boxes behind,
+    /// and an empty box contains no text — so extraction cannot distinguish a correct table
+    /// from a broken one. Extraction also interleaves adjacent cells on the same line, which
+    /// makes it an unreliable oracle for table structure either way.
+    /// </remarks>
+    private static W.Table TableOf(params W.TableRow[] rows) => new(rows);
+
+    private static W.TableCell Cell(string text, int gridSpan = 1, W.MergedCellValues? vMerge = null)
+    {
+        var properties = new W.TableCellProperties();
+
+        if (gridSpan > 1)
+            properties.AppendChild(new W.GridSpan { Val = gridSpan });
+
+        if (vMerge is { } value)
+        {
+            properties.AppendChild(value == W.MergedCellValues.Restart
+                ? new W.VerticalMerge { Val = W.MergedCellValues.Restart }
+                // An omitted val is how Word writes "continue".
+                : new W.VerticalMerge());
+        }
+
+        return new W.TableCell(properties, Para(text));
+    }
+
+    [Fact]
+    public void A_horizontally_merged_cell_does_not_displace_the_cells_after_it()
+    {
+        var table = TableOf(
+            new W.TableRow(Cell("Charges", gridSpan: 2), Cell("Total")),
+            new W.TableRow(Cell("Setup"), Cell("Monthly"), Cell("900")));
+        table.InsertAt(new W.TableGrid(new W.GridColumn(), new W.GridColumn(), new W.GridColumn()), 0);
+
+        var placements = OpenXmlWordConverter.LayOut(table, out var columns);
+
+        Assert.Equal(3, columns);
+
+        // "Total" belongs in column two, after the span — not column one, on top of it.
+        var total = placements.Single(p => p.Row == 0 && p.ColumnSpan == 1);
+        Assert.Equal(2, total.Column);
+
+        // The unmerged row below still reads left to right.
+        Assert.Equal([0, 1, 2], placements.Where(p => p.Row == 1).Select(p => p.Column));
+    }
+
+    [Fact]
+    public void A_vertically_merged_cell_is_one_cell_rather_than_a_stack_of_empty_ones()
+    {
+        var table = TableOf(
+            new W.TableRow(
+                Cell("Services", vMerge: W.MergedCellValues.Restart),
+                Cell("Setup")),
+            new W.TableRow(
+                Cell(string.Empty, vMerge: W.MergedCellValues.Continue),
+                Cell("Monthly retainer")),
+            new W.TableRow(
+                Cell(string.Empty, vMerge: W.MergedCellValues.Continue),
+                Cell("Support")));
+        table.InsertAt(new W.TableGrid(new W.GridColumn(), new W.GridColumn()), 0);
+
+        var placements = OpenXmlWordConverter.LayOut(table, out var columns);
+
+        Assert.Equal(2, columns);
+
+        // Column zero is placed once and grows downwards over the two continuation rows.
+        var merged = Assert.Single(placements, p => p.Column == 0);
+        Assert.Equal(0, merged.Row);
+        Assert.Equal(2, merged.ExtraRows);
+
+        // The right-hand column keeps all three of its own cells.
+        Assert.Equal(3, placements.Count(p => p.Column == 1));
+    }
+
+    [Fact]
+    public void The_column_count_comes_from_the_grid_not_the_longest_row()
+    {
+        // A banner row spanning all three columns. Counting cells would call this a
+        // one-column table and squeeze the row beneath it into a third of the page.
+        var table = TableOf(
+            new W.TableRow(Cell("Schedule of fees", gridSpan: 3)),
+            new W.TableRow(Cell("Item"), Cell("Rate"), Cell("Term")));
+        table.InsertAt(new W.TableGrid(new W.GridColumn(), new W.GridColumn(), new W.GridColumn()), 0);
+
+        var placements = OpenXmlWordConverter.LayOut(table, out var columns);
+
+        Assert.Equal(3, columns);
+        Assert.Equal(3, placements.Single(p => p.Row == 0).ColumnSpan);
+    }
+
+    [Fact]
+    public void A_table_with_no_declared_grid_takes_its_width_from_the_spans()
+    {
+        var table = TableOf(
+            new W.TableRow(Cell("Heading", gridSpan: 2), Cell("Note")),
+            new W.TableRow(Cell("a"), Cell("b"), Cell("c")));
+
+        _ = OpenXmlWordConverter.LayOut(table, out var columns);
+
+        Assert.Equal(3, columns);
+    }
+
+    [Fact]
+    public async Task A_document_whose_table_is_merged_still_converts()
+    {
+        var docx = BuildDocx(body =>
+        {
+            var table = TableOf(
+                new W.TableRow(Cell("Schedule of fees", gridSpan: 2)),
+                new W.TableRow(
+                    Cell("Services", vMerge: W.MergedCellValues.Restart),
+                    Cell("Setup")),
+                new W.TableRow(
+                    Cell(string.Empty, vMerge: W.MergedCellValues.Continue),
+                    Cell("Monthly retainer")));
+            table.InsertAt(new W.TableGrid(new W.GridColumn(), new W.GridColumn()), 0);
+            body.AppendChild(table);
+        });
+
+        var artifact = await Managed.ConvertAsync(docx, "contract.docx");
+
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(artifact.Content, 0, 5), StringComparison.Ordinal);
+
+        // Whitespace is collapsed first: the extractor emits each word of a table cell on its
+        // own line, so a literal comparison would fail on a document that rendered correctly.
+        var text = System.Text.RegularExpressions.Regex.Replace(TextOf(artifact.Content), @"\s+", " ");
+
+        Assert.Contains("Schedule of fees", text, StringComparison.Ordinal);
+        Assert.Contains("Services", text, StringComparison.Ordinal);
+        Assert.Contains("Monthly retainer", text, StringComparison.Ordinal);
+    }
 }

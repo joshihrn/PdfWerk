@@ -496,13 +496,103 @@ public sealed class OpenXmlWordConverter : IWordConverter
 
     // ---- tables ----------------------------------------------------------
 
+    /// <summary>
+    /// Where one source cell ends up in the rendered grid.
+    /// </summary>
+    /// <remarks>
+    /// Separated from the drawing so it can be tested directly. The failure this exists to
+    /// prevent — a merged cell leaving empty boxes behind — is invisible to text extraction,
+    /// because an empty box contains no text to extract. Asserting on the layout catches it;
+    /// asserting on the rendered PDF cannot.
+    /// </remarks>
+    internal sealed record CellPlacement(int Row, int Column, int ColumnSpan, W.TableCell Source)
+    {
+        /// <summary>Extra rows this cell grows into, from the vertical merges that follow it.</summary>
+        public int ExtraRows { get; set; }
+    }
+
+    /// <summary>Reads a cell's horizontal span.</summary>
+    private static int SpanOf(W.TableCell cell) =>
+        cell.TableCellProperties?.GridSpan?.Val?.Value is { } span && span > 0 ? span : 1;
+
+    /// <summary>Whether a cell begins a vertical merge, continues one, or neither.</summary>
+    private static (bool Restart, bool Continue) VerticalMergeOf(W.TableCell cell)
+    {
+        var merge = cell.TableCellProperties?.VerticalMerge;
+        if (merge is null)
+            return (false, false);
+
+        // An omitted val means "continue" — the same toggle convention as bold and italic.
+        var restart = merge.Val?.Value == W.MergedCellValues.Restart;
+        return (restart, !restart);
+    }
+
+    /// <summary>
+    /// Places every cell on the grid, resolving horizontal and vertical merges.
+    /// </summary>
+    /// <remarks>
+    /// A merged cell occupies several grid columns but appears once in the row, so a row with
+    /// merges has fewer <c>w:tc</c> elements than the table has columns. Placing cells by their
+    /// index within the row rather than their position on the grid is what shifted every later
+    /// cell leftwards; treating a vertical merge's continuation cells as ordinary ones is what
+    /// drew an empty bordered box beneath the merged cell for every row it spanned.
+    /// </remarks>
+    internal static IReadOnlyList<CellPlacement> LayOut(W.Table table, out int columnCount)
+    {
+        var rows = table.Elements<W.TableRow>().ToList();
+
+        // The declared grid is authoritative. Without one the width has to be summed from the
+        // spans, because a row of three cells where one spans two columns is four columns wide.
+        var declared = table.Elements<W.TableGrid>().FirstOrDefault()?
+            .Elements<W.GridColumn>().Count() ?? 0;
+        var widest = rows.Count == 0 ? 0 : rows.Max(r => r.Elements<W.TableCell>().Sum(SpanOf));
+
+        columnCount = Math.Max(declared, widest);
+        if (columnCount == 0)
+            return [];
+
+        var placements = new List<CellPlacement>();
+        var openMerge = new CellPlacement?[columnCount];
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var column = 0;
+
+            foreach (var sourceCell in rows[r].Elements<W.TableCell>())
+            {
+                if (column >= columnCount)
+                    break;
+
+                var span = Math.Min(SpanOf(sourceCell), columnCount - column);
+                var (restart, continues) = VerticalMergeOf(sourceCell);
+
+                if (continues && openMerge[column] is { } origin)
+                {
+                    // Absorbed by the cell above. Any content here is Word's own placeholder
+                    // and is not meant to be shown a second time.
+                    origin.ExtraRows++;
+                    column += span;
+                    continue;
+                }
+
+                var placement = new CellPlacement(r, column, span, sourceCell);
+                placements.Add(placement);
+
+                openMerge[column] = restart ? placement : null;
+                column += span;
+            }
+        }
+
+        return placements;
+    }
+
     private static void WriteTable(Section section, MainDocumentPart main, W.Table source)
     {
-        var rows = source.Elements<W.TableRow>().ToList();
-        if (rows.Count == 0)
+        var rowCount = source.Elements<W.TableRow>().Count();
+        if (rowCount == 0)
             return;
 
-        var columnCount = rows.Max(r => r.Elements<W.TableCell>().Count());
+        var placements = LayOut(source, out var columnCount);
         if (columnCount == 0)
             return;
 
@@ -515,38 +605,43 @@ public sealed class OpenXmlWordConverter : IWordConverter
                      - section.PageSetup.LeftMargin.Point
                      - section.PageSetup.RightMargin.Point;
 
-        var widths = ColumnWidths(source, columnCount, usable);
-        foreach (var width in widths)
+        foreach (var width in ColumnWidths(source, columnCount, usable))
             table.AddColumn(Unit.FromPoint(width));
 
-        foreach (var sourceRow in rows)
+        for (var r = 0; r < rowCount; r++)
         {
             var row = table.AddRow();
             row.VerticalAlignment = VerticalAlignment.Center;
+        }
 
-            var cells = sourceRow.Elements<W.TableCell>().ToList();
-            for (var i = 0; i < cells.Count && i < columnCount; i++)
+        foreach (var placement in placements)
+        {
+            var cell = table.Rows[placement.Row].Cells[placement.Column];
+
+            if (placement.ColumnSpan > 1)
+                cell.MergeRight = placement.ColumnSpan - 1;
+
+            if (placement.ExtraRows > 0)
+                cell.MergeDown = placement.ExtraRows;
+
+            cell.Format.SpaceBefore = Unit.FromPoint(3);
+            cell.Format.SpaceAfter = Unit.FromPoint(3);
+            cell.Format.LeftIndent = Unit.FromPoint(4);
+            cell.Format.RightIndent = Unit.FromPoint(4);
+
+            foreach (var paragraph in placement.Source.Elements<W.Paragraph>())
             {
-                var cell = row.Cells[i];
-                cell.Format.SpaceBefore = Unit.FromPoint(3);
-                cell.Format.SpaceAfter = Unit.FromPoint(3);
-                cell.Format.LeftIndent = Unit.FromPoint(4);
-                cell.Format.RightIndent = Unit.FromPoint(4);
+                var target = cell.AddParagraph();
+                target.Format.SpaceAfter = Unit.FromPoint(2);
 
-                foreach (var paragraph in cells[i].Elements<W.Paragraph>())
-                {
-                    var target = cell.AddParagraph();
-                    target.Format.SpaceAfter = Unit.FromPoint(2);
+                // No successor factory: a page break inside a cell has nowhere to go.
+                var cursor = new ParagraphCursor(target, successor: null);
 
-                    // No successor factory: a page break inside a cell has nowhere to go.
-                    var cursor = new ParagraphCursor(target, successor: null);
+                foreach (var run in paragraph.Elements<W.Run>())
+                    WriteRun(cursor, main, run);
 
-                    foreach (var run in paragraph.Elements<W.Run>())
-                        WriteRun(cursor, main, run);
-
-                    if (!cursor.Wrote)
-                        target.AddText(" ");
-                }
+                if (!cursor.Wrote)
+                    target.AddText(" ");
             }
         }
 

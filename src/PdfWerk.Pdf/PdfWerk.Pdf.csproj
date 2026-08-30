@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\PdfWerk.Core\PdfWerk.Core.csproj" />
@@ -19,4 +19,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The table layout is internal because callers have no use for it, but it is the part
+         worth testing directly: a merge fault shows up as an empty cell, which leaves no text
+         in the rendered PDF for a test to assert on. -->
+    <InternalsVisibleTo Include="PdfWerk.Tests" />
+  </ItemGroup>
 </Project>

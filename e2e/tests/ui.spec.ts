@@ -2221,3 +2221,78 @@ test.describe('embed demo harness', () => {
     await expect(link).toHaveAttribute('href', '/embed-demo.html')
   })
 })
+
+test.describe('home explainer', () => {
+  /**
+   * The silent explainer that narrates the name, the integration paths and the operation list
+   * once the section scrolls into view. Checked as a sequence rather than only its end state,
+   * because the interesting bugs here are in the sequencing — a phase that never advances, or
+   * advances before its content is real.
+   */
+  test('plays through in order and settles', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.explainer').scrollIntoViewIfNeeded()
+
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '1', { timeout: 4000 })
+    await expect(page.getByText('Werk — German for a work, or a workshop.')).toBeVisible()
+
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '2', { timeout: 4000 })
+    await expect(page.getByText('One POST. Three ways in.')).toBeVisible()
+
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '3', { timeout: 5000 })
+
+    // Settles rather than looping: an explainer that plays forever reads as an advertisement,
+    // which is exactly what the rest of the homepage's copy is written to avoid.
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 5000 })
+    await expect(page.getByRole('button', { name: 'Play the explainer again' })).toBeVisible()
+  })
+
+  test('shows every real operation, not a curated subset', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.explainer').scrollIntoViewIfNeeded()
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 15_000 })
+
+    const actions = await (await page.request.get('/v1/actions')).json()
+    const chips = await page.locator('.chip').allTextContents()
+
+    // A hand-picked "greatest hits" grid would misstate what the product does the moment a
+    // fifteenth operation ships and nobody remembers to add it to the animation too.
+    expect(chips).toHaveLength(actions.length)
+    for (const action of actions) expect(chips).toContain(action.title)
+  })
+
+  test('replay restarts the sequence from the beginning', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.explainer').scrollIntoViewIfNeeded()
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 15_000 })
+
+    const replay = page.getByRole('button', { name: 'Play the explainer again' })
+    await replay.click()
+
+    // The transition through phase 0 is a single tick, too fast for a polling assertion to
+    // reliably catch. The real signal is the round trip: the control this state gates
+    // disappears, and once the sequence has run again, reappears.
+    await expect(replay).toHaveCount(0)
+    await expect(replay).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('reduced motion skips straight to the settled state', async ({ page }) => {
+    // No sequence to watch, so nothing worth making someone wait for.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/')
+    await page.locator('.explainer').scrollIntoViewIfNeeded()
+
+    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 2000 })
+  })
+
+  test('the text is present in the DOM regardless of animation state', async ({ page }) => {
+    // Real DOM text gated by opacity, not conditional rendering, so it reads and indexes like
+    // the rest of the page whether or not the animation has run yet. Not asserting on phase
+    // here: at typical viewport sizes the section is already within the intersection threshold
+    // on load, so "hasn't started" is not a reliable premise. The invariant that matters is
+    // that the text exists either way.
+    await page.goto('/')
+
+    await expect(page.getByText('The mark is a page held inside code brackets')).toBeAttached()
+  })
+})

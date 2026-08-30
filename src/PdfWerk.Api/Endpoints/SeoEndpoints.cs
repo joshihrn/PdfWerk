@@ -71,6 +71,24 @@ public static class SeoEndpoints
         // it was handed the shell with the site's generic title on it.
         app.MapFallback(async context =>
         {
+            /*
+             * API paths are never the shell's to answer.
+             *
+             * Without this, a POST to a mistyped or not-yet-deployed /v1 route came back as 200
+             * with the single-page app's HTML. A client sees a success status and a body it
+             * cannot parse, which is a worse failure than a 404: it hides typos, and it makes
+             * version skew between a client and the server undetectable.
+             */
+            if (context.Request.Path.StartsWithSegments("/v1", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                context.Response.ContentType = "application/json";
+
+                await context.Response.WriteAsync(
+                    """{"error":"not_found","message":"No such endpoint."}""");
+                return;
+            }
+
             var html = shell.Render(context.Request.Path);
 
             if (catalogue.Find(context.Request.Path) is { NoIndex: true })

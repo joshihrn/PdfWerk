@@ -218,6 +218,103 @@ internal static class AcroFormWriter
         acroForm.Elements.GetArray("/Fields")!.Elements.Add(Ref(field));
     }
 
+    /// <summary>
+    /// Creates one field that appears in several places at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// In AcroForm a name identifies a field, not a box. Several widgets sharing a name are one
+    /// field with several appearances, and a viewer keeps them in step: type into any of them and
+    /// the rest follow. That is how a name or a date is repeated on every page of a contract
+    /// without asking the signer to write it out each time.
+    /// </para>
+    /// <para>
+    /// Structurally that means a parent holding the field's identity — name, type, flags, value —
+    /// and a /Kids array of widget annotations holding only the geometry. Giving each box its own
+    /// field with the same /T instead produces a document that viewers disagree about: some show
+    /// the last one, some the first, and Acrobat reports the form as damaged.
+    /// </para>
+    /// </remarks>
+    public static void AddShared(
+        PdfDocument document,
+        PdfDictionary acroForm,
+        IReadOnlyList<FormFieldSpec> specs)
+    {
+        if (specs.Count == 1)
+        {
+            Add(document, acroForm, specs[0]);
+            return;
+        }
+
+        var first = specs[0];
+
+        foreach (var spec in specs)
+        {
+            spec.Validate();
+            PdfGuardPage(document, spec.Rect.Page);
+
+            // A shared name is one field, so its type is a property of the name rather than of
+            // each box. Two boxes called "signature" that disagree about what they are cannot be
+            // resolved into a single field, and silently picking one would lose the other.
+            if (spec.Type != first.Type)
+            {
+                throw new PdfWerkException(
+                    $"Fields named '{first.Name}' must all be the same type; found {first.Type} and {spec.Type}.");
+            }
+
+            // A radio group is already a parent with kids of its own; nesting one inside another
+            // parent is not a structure viewers handle.
+            if (spec.Type == FormFieldType.RadioGroup)
+            {
+                throw new PdfWerkException(
+                    $"'{first.Name}' is a radio group, which already spans several boxes. Give it one rectangle covering all its options instead of repeating the name.");
+            }
+        }
+
+        // The parent carries identity and value; it is not itself an annotation, so it gets no
+        // /Subtype and is never attached to a page.
+        var parent = new PdfDictionary(document);
+        document.Internals.AddObject(parent);
+        parent.Elements["/T"] = Text(first.Name);
+
+        if (!string.IsNullOrWhiteSpace(first.ToolTip))
+            parent.Elements["/TU"] = Text(first.ToolTip);
+
+        var kids = new PdfArray(document);
+
+        foreach (var spec in specs)
+        {
+            var page = document.Pages[spec.Rect.Page - 1];
+
+            // Built as a normal merged field, then demoted to a pure widget: the field-level
+            // entries move up to the parent, so the kid keeps only what is about where it sits.
+            var widget = BuildMergedField(document, page, spec);
+
+            foreach (var key in new[] { "/FT", "/Ff", "/DA", "/V", "/DV", "/Opt", "/I", "/MaxLen", "/TU" })
+            {
+                if (!widget.Elements.ContainsKey(key))
+                    continue;
+
+                // First writer wins: the parent takes its value from the first box, and the rest
+                // contribute only their geometry.
+                if (!parent.Elements.ContainsKey(key))
+                    parent.Elements[key] = widget.Elements[key];
+
+                widget.Elements.Remove(key);
+            }
+
+            widget.Elements.Remove("/T");
+            widget.Elements.SetReference("/Parent", parent);
+            kids.Elements.Add(Ref(widget));
+        }
+
+        parent.Elements["/Kids"] = kids;
+
+        // Only the parent is registered in /Fields. The kids are reachable through it, and
+        // listing them as well would make the form report duplicate fields.
+        acroForm.Elements.GetArray("/Fields")!.Elements.Add(Ref(parent));
+    }
+
     private static void PdfGuardPage(PdfDocument document, int page)
     {
         if (page < 1 || page > document.PageCount)
@@ -276,6 +373,11 @@ internal static class AcroFormWriter
                 if (!string.IsNullOrEmpty(spec.Value) && spec.Options.Contains(spec.Value, StringComparer.Ordinal))
                 {
                     field.Elements["/V"] = Text(spec.Value);
+
+                    // /DV as well as /V. Without it a viewer's "reset form" clears the field
+                    // rather than returning it to the value the document shipped with, which is
+                    // the whole point of calling it a default.
+                    field.Elements["/DV"] = Text(spec.Value);
                     field.Elements.SetInteger("/I", spec.Options.ToList().IndexOf(spec.Value));
                 }
 
@@ -330,6 +432,7 @@ internal static class AcroFormWriter
             : null;
 
         parent.Elements.SetName("/V", selected is null ? "/Off" : "/" + EscapeName(selected));
+        parent.Elements.SetName("/DV", selected is null ? "/Off" : "/" + EscapeName(selected));
         document.Internals.AddObject(parent);
 
         var kids = new PdfArray(document);

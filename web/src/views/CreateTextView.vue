@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import ResultPane from '../components/ResultPane.vue'
 import {
   PwButton,
+  PwCallout,
   PwCard,
   PwCheckbox,
   PwField,
@@ -45,6 +46,42 @@ const pageNumbers = ref(true)
 const result = ref<DocumentResult | null>(null)
 const error = ref<unknown>(null)
 const busy = ref(false)
+
+/*
+ * Drafting writes into the same editor the Preview button reads from, rather than being a mode
+ * of its own. A draft is a starting point, and the thing people most want to do with one is
+ * change it before it becomes a document — so it lands where the text already is.
+ */
+const brief = ref('')
+const drafting = ref(false)
+const draftError = ref<string | null>(null)
+const draftedBy = ref<string | null>(null)
+
+const canDraft = computed(() => brief.value.trim().length >= 10 && !drafting.value)
+
+async function draft() {
+  if (!canDraft.value) return
+
+  drafting.value = true
+  draftError.value = null
+
+  try {
+    const drafted = await api.draftDocument({
+      brief: brief.value,
+      title: title.value || null,
+    })
+
+    content.value = drafted.content
+    draftedBy.value = drafted.model
+    brief.value = ''
+  } catch (ex) {
+    // Shown beside the brief rather than in the result pane: the result pane is about the
+    // rendered PDF, and nothing has been rendered yet.
+    draftError.value = ex instanceof Error ? ex.message : String(ex)
+  } finally {
+    drafting.value = false
+  }
+}
 
 const empty = computed(() => content.value.trim().length === 0)
 
@@ -97,6 +134,37 @@ async function run(delivery: Delivery) {
       title="Create a PDF from text"
       description="Write Markdown or plain text and get a clean, paginated document. Headings, lists, tables, block quotes, code and links are all rendered."
     />
+
+    <PwCard title="Describe it and have it written" class="draft">
+      <div class="stack-4">
+        <PwCallout v-if="draftError" tone="bad" assertive title="That draft did not come back">
+          {{ draftError }}
+        </PwCallout>
+
+        <PwField
+          v-slot="{ id }"
+          label="What should the document say?"
+          help="A sentence or two is enough. The draft replaces the body below, where you can edit it before rendering."
+        >
+          <PwTextarea
+            :id="id"
+            v-model="brief"
+            :rows="3"
+            :mono="false"
+            placeholder="A two-page service agreement between Acme Ltd and a freelance designer, covering payment terms, ownership of work and a 60-day notice period."
+          />
+        </PwField>
+      </div>
+
+      <template #footer>
+        <PwButton :loading="drafting" :disabled="!canDraft" @click="draft">
+          Write it for me
+        </PwButton>
+        <span v-if="drafting" class="t-12 subtle">This takes a few seconds…</span>
+        <span v-else-if="draftedBy" class="t-12 subtle">Drafted by {{ draftedBy }}. Edit it below.</span>
+        <span v-else class="t-12 subtle">Optional — you can write the body yourself instead</span>
+      </template>
+    </PwCard>
 
     <div class="split">
       <PwCard title="Content">
@@ -167,3 +235,7 @@ async function run(delivery: Delivery) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.draft { margin-bottom: var(--s-5); }
+</style>

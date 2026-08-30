@@ -44,6 +44,8 @@ interface DraftField {
   multiline: boolean
   options: string
   toolTip: string
+  /** Written to the field as both /V and /DV, so a reader's "reset form" restores it. */
+  value: string
   /** Present on fields loaded from the document, absent on ones drawn here. */
   existing?: boolean
 }
@@ -82,6 +84,39 @@ const modes = [
   { value: 'design', label: 'Design fields' },
   { value: 'fill', label: 'Fill values' },
 ]
+
+/**
+ * What a default value means depends on the field. Checkboxes take true/false and choice fields
+ * take one of their own options, so a single generic hint would be wrong for two of the six.
+ */
+const defaultValueHelp = computed(() => {
+  switch (selected.value?.type) {
+    case 'Checkbox':
+      return 'true or false'
+    case 'Dropdown':
+    case 'ListBox':
+    case 'RadioGroup':
+      return 'Must be one of the options below'
+    case 'Signature':
+      return 'Signature fields cannot carry a value'
+    default:
+      return 'Pre-filled when the form opens, and restored by “reset form”'
+  }
+})
+
+const defaultValuePlaceholder = computed(() =>
+  selected.value?.type === 'Checkbox' ? 'false' : 'Empty',
+)
+
+/**
+ * Sharing a name is legitimate — it is how the same answer appears on every page — so this
+ * explains rather than warns.
+ */
+const sharedWithSelected = computed(() => {
+  const name = selected.value?.name
+  if (!name) return 0
+  return fields.value.filter((f) => f.name === name).length
+})
 
 const fieldTypes: { value: FieldType; label: string }[] = [
   { value: 'Text', label: 'Text' },
@@ -135,6 +170,7 @@ watch(files, async (list) => {
         multiline: false,
         options: f.options.join('\n'),
         toolTip: '',
+        value: f.value ?? '',
         existing: true,
       }))
 
@@ -261,7 +297,9 @@ function addFieldAt(pointX: number, pointY: number) {
   const size = defaultSize[newFieldType.value]
   const base = newFieldType.value.toLowerCase()
 
-  // Names must be unique within a form, so a suffix is appended until one is free.
+  // A suffix so a newly drawn box does not silently join an existing field. Sharing a name is
+  // supported and useful, but it should be something the user chooses rather than a side effect
+  // of drawing a second box of the same kind.
   let name = base
   let counter = 1
   while (fields.value.some((f) => f.name === name)) name = `${base}${++counter}`
@@ -282,6 +320,7 @@ function addFieldAt(pointX: number, pointY: number) {
       ? 'Option A\nOption B'
       : '',
     toolTip: '',
+    value: '',
   }
 
   fields.value.push(field)
@@ -394,6 +433,7 @@ async function applyDesign(delivery: Delivery) {
           readOnly: f.readOnly,
           multiline: f.multiline,
           toolTip: f.toolTip || null,
+          value: f.value || null,
           options: optionList(f),
         })),
         // A field loaded from the document and then deleted here must go there too.
@@ -519,12 +559,27 @@ async function fill(delivery: Delivery) {
         <PwCard :title="selected ? 'Selected field' : 'Fields'">
           <template v-if="selected">
             <div class="stack-4">
-              <PwField v-slot="{ id }" label="Name" required>
+              <PwField
+                v-slot="{ id }"
+                label="Name"
+                required
+                :help="sharedWithSelected > 1
+                  ? `Used by ${sharedWithSelected} boxes — they become one field, and filling any one fills them all`
+                  : 'Reuse a name on another box to repeat the same answer there'"
+              >
                 <PwInput :id="id" v-model="selected.name" mono />
               </PwField>
 
               <PwField v-slot="{ id }" label="Tooltip" help="Shown on hover in a PDF reader">
                 <PwInput :id="id" v-model="selected.toolTip" />
+              </PwField>
+
+              <PwField
+                v-slot="{ id }"
+                label="Default value"
+                :help="defaultValueHelp"
+              >
+                <PwInput :id="id" v-model="selected.value" :placeholder="defaultValuePlaceholder" />
               </PwField>
 
               <div class="cols-2">

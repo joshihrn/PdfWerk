@@ -128,6 +128,12 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
 
 // ---- shapes -------------------------------------------------------------
 
+export interface DraftResult {
+  content: string
+  model: string
+  provider: string
+}
+
 export interface ActionDescriptor {
   action: string
   slug: string
@@ -240,6 +246,19 @@ export const api = {
       delivery,
       'document.pdf',
     ),
+
+  /**
+   * Drafts a document body from a brief.
+   *
+   * Returns Markdown rather than a PDF on purpose: a draft is a first attempt at someone else's
+   * words, and handing back a finished file would make correcting it mean starting again.
+   */
+  draftDocument: (body: { brief: string; title?: string | null; provider?: string | null }) =>
+    requestJson<DraftResult>('/v1/create/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 
   createFromWord: (file: File, delivery: Delivery) => {
     const form = new FormData()

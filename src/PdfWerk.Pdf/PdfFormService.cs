@@ -46,18 +46,23 @@ public sealed class PdfFormService : IPdfFormService
             AcroFormWriter.Remove(document, acroForm, toRemove);
 
         var present = AcroFormWriter.ExistingNames(acroForm);
-        var added = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var spec in request.Add)
+        /*
+         * Grouped by name, because in AcroForm a name is a field and not a box.
+         *
+         * Repeating a name used to be rejected. It is in fact the normal way to put the same
+         * answer in several places — a name or a date on every page of a contract — and a viewer
+         * keeps the boxes in step, so the signer writes it once. What must not happen is several
+         * separate fields sharing a /T, which viewers disagree about and Acrobat reports as a
+         * damaged form; AddShared builds the one field with several widgets that this means.
+         */
+        foreach (var group in request.Add.GroupBy(spec => spec.Name, StringComparer.Ordinal))
         {
-            if (!added.Add(spec.Name))
-                throw new PdfWerkException($"Field '{spec.Name}' appears twice in the same request.");
-
-            if (present.Contains(spec.Name))
+            if (present.Contains(group.Key))
                 throw new PdfWerkException(
-                    $"A field named '{spec.Name}' already exists. Set replace=true to overwrite it.");
+                    $"A field named '{group.Key}' already exists. Set replace=true to overwrite it.");
 
-            AcroFormWriter.Add(document, acroForm, spec);
+            AcroFormWriter.AddShared(document, acroForm, [.. group]);
         }
 
         return new PdfArtifact(PdfGuard.Save(document), "form.pdf");

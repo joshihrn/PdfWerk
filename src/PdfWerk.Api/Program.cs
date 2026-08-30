@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Text.Json.Serialization;
 using PdfWerk.Ai;
@@ -6,6 +7,7 @@ using PdfWerk.Api.Infrastructure;
 using PdfWerk.Core.Abstractions;
 using PdfWerk.Core.Limits;
 using PdfWerk.Infrastructure;
+using PdfWerk.Infrastructure.Data;
 using PdfWerk.Infrastructure.Contact;
 using PdfWerk.Infrastructure.RateLimiting;
 using PdfWerk.Pdf;
@@ -208,15 +210,47 @@ await BootstrapAdminAsync(app);
 
 WarnIfLimiterIsSingleProcess(app);
 
-// Stated explicitly, because "no telemetry" and "no traffic" look identical from the other end.
-app.Services.GetRequiredService<ILoggerFactory>()
-    .CreateLogger("PdfWerk.Telemetry")
-    .LogInformation(
-        string.IsNullOrWhiteSpace(telemetryConnection)
-            ? "Application Insights is off: no connection string is configured."
-            : "Application Insights is on.");
+/*
+ * The startup summary, emitted once the host is running rather than while it is starting.
+ *
+ * Telemetry logged during start-up does not reliably reach Application Insights: the channel is
+ * still coming up, and anything written before it is ready is dropped. That was measured, not
+ * assumed — the first restart with telemetry enabled sent every request and EF trace but none of
+ * the start-up lines, which are exactly the ones worth having when a database fails to migrate.
+ *
+ * Repeating the summary after ApplicationStarted, then flushing, puts it somewhere it can be
+ * searched months later instead of only in a container log that rotates.
+ */
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PdfWerk.Startup");
+
+    logger.LogInformation(
+        "PdfWerk started. Telemetry: {Telemetry}. Storage: {Storage}.",
+        string.IsNullOrWhiteSpace(telemetryConnection) ? "off" : "on",
+        StorageDescription(app.Services));
+
+    // Without an explicit flush the channel can hold this for up to thirty seconds, which is
+    // long enough for a container that fails soon after start to take it down with it.
+    app.Services.GetService<Microsoft.ApplicationInsights.TelemetryClient>()?.Flush();
+});
 
 app.Run();
+
+/// <summary>The provider actually in use, so a silent fall back to SQLite is visible.</summary>
+static string StorageDescription(IServiceProvider services)
+{
+    try
+    {
+        var factory = services.GetRequiredService<IDbContextFactory<PdfWerkDbContext>>();
+        using var db = factory.CreateDbContext();
+        return db.Database.ProviderName ?? "unknown";
+    }
+    catch (Exception ex)
+    {
+        return $"unavailable ({ex.GetType().Name})";
+    }
+}
 
 /// <summary>
 /// The in-memory limiter counts per process, so behind more than one instance the effective

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   apiKey,
@@ -762,6 +762,21 @@ test.describe('summarise', () => {
   })
 })
 
+/**
+ * Makes the contact page believe this instance can send mail.
+ *
+ * ContactView asks GET /v1/contact before rendering, and shows a "cannot send mail" notice
+ * instead of the form when the answer is no. Without this stub the contact tests pass or fail
+ * according to whether the machine running them happens to have a Brevo key configured, which
+ * is not a property of the code under test.
+ */
+async function assumeMailConfigured(page: Page) {
+  await page.route('**/v1/contact', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"configured":true}' })
+  })
+}
+
 test.describe('accessibility audit', () => {
   const pages = ['/', '/create', '/word', '/edit', '/forms', '/merge', '/pages', '/summarize', '/inspect', '/api', '/contact', '/privacy', '/terms']
 
@@ -769,6 +784,11 @@ test.describe('accessibility audit', () => {
     for (const theme of ['light', 'dark'] as const) {
       test(`${path} has no axe violations in ${theme}`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: theme })
+
+        // Otherwise /contact is audited showing its "no mail provider" notice rather than the
+        // form, so the form's own labels and controls are never checked at all.
+        if (path === '/contact') await assumeMailConfigured(page)
+
         await page.goto(path)
 
         // The catalogue on the landing page arrives over the network; auditing before it lands
@@ -1960,6 +1980,7 @@ test.describe('contact page', () => {
   })
 
   test('sending is blocked until there is something to send', async ({ page }) => {
+    await assumeMailConfigured(page)
     await page.goto('/contact')
 
     const send = page.getByRole('button', { name: 'Send message' })
@@ -1979,6 +2000,7 @@ test.describe('contact page', () => {
   })
 
   test('the honeypot is hidden from people and from assistive technology', async ({ page }) => {
+    await assumeMailConfigured(page)
     await page.goto('/contact')
 
     const trap = page.locator('#website')
@@ -1993,15 +2015,14 @@ test.describe('contact page', () => {
   })
 
   test('a failure to send is reported rather than swallowed', async ({ page }) => {
-    await page.route('**/v1/contact', async (route) => {
-      if (route.request().method() !== 'POST') return route.continue()
-
-      return route.fulfill({
-        status: 502,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'bad_gateway', message: 'That message could not be sent just now.' }),
-      })
-    })
+    await page.route('**/v1/contact', async (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"configured":true}' })
+        : route.fulfill({
+            status: 502,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'bad_gateway', message: 'That message could not be sent just now.' }),
+          }))
 
     await page.goto('/contact')
     await page.getByLabel('Your name').fill('Ada Lovelace')
@@ -2016,10 +2037,15 @@ test.describe('contact page', () => {
   })
 
   test('a sent message is confirmed and the form is cleared', async ({ page }) => {
-    await page.route('**/v1/contact', async (route) => {
-      if (route.request().method() !== 'POST') return route.continue()
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"sent":true}' })
-    })
+    // Both methods in one handler. route.continue() goes to the network rather than falling
+    // through to another handler, so two separate routes on the same URL cannot cooperate —
+    // whichever runs second never sees the request.
+    await page.route('**/v1/contact', async (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: route.request().method() === 'GET' ? '{"configured":true}' : '{"sent":true}',
+      }))
 
     await page.goto('/contact')
     await page.getByLabel('Your name').fill('Ada Lovelace')
@@ -2043,5 +2069,61 @@ test.describe('contact page', () => {
     // possible way to find out, and it is the normal state for a self-hosted copy.
     await expect(page.getByText('This instance cannot send mail')).toBeVisible()
     await expect(page.getByLabel('Message')).toHaveCount(0)
+  })
+})
+
+test.describe('inline text editing', () => {
+  /**
+   * The picker overlays pdf.js text runs on the rendered page so a word can be clicked and
+   * rewritten, instead of being retyped exactly into a find box. What it produces is still an
+   * ordinary replacement — the point of these tests is that the click reaches the list.
+   */
+  test('clicking a word fills in a replacement scoped to that page', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'Acme Corporation signs here.', 'Contract')
+
+    await page.goto('/edit')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    const picker = page.locator('.picker__page')
+    await expect(picker).toHaveAttribute('data-ready', 'true', { timeout: 30_000 })
+
+    // Every run is a button labelled with the text it covers, which is also what makes the
+    // overlay usable from a keyboard and a screen reader.
+    const run = page.getByRole('button', { name: /Edit “Acme/ }).first()
+    await expect(run).toBeVisible()
+    await run.click()
+
+    const input = page.locator('#pw-inline-edit')
+    await expect(input).toBeFocused()
+
+    await input.fill('Globex Inc')
+    await input.press('Enter')
+
+    // The rule lands in the list below, where it can still be corrected or removed.
+    await expect(page.getByRole('textbox', { name: 'Replace with' }).first()).toHaveValue('Globex Inc')
+    await expect(page.getByRole('spinbutton', { name: 'Page' }).first()).toHaveValue('1')
+  })
+
+  test('an unchanged word does not become a replacement', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'Acme Corporation signs here.', 'Contract')
+
+    await page.goto('/edit')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await expect(page.locator('.picker__page')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 })
+
+    await page.getByRole('button', { name: /Edit “Acme/ }).first().click()
+    await page.locator('#pw-inline-edit').press('Enter')
+
+    // Rewriting a string to itself would spend a match and report a change that never happened.
+    await expect(page.getByRole('textbox', { name: 'Find' }).first()).toHaveValue('')
   })
 })

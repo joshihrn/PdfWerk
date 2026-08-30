@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import FileDrop from '../components/FileDrop.vue'
+import PdfTextPicker from '../components/PdfTextPicker.vue'
 import ResultPane from '../components/ResultPane.vue'
 import {
   PwButton,
@@ -17,6 +18,8 @@ interface Replacement {
   replace: string
   matchCase: boolean
   page: number | null
+  /** Came from clicking the page rather than being typed into the list. */
+  picked?: boolean
 }
 
 const files = ref<File[]>([])
@@ -32,6 +35,36 @@ const ready = computed(() => files.value.length > 0 && usable.value.length > 0)
 
 function add() {
   replacements.value.push({ find: '', replace: '', matchCase: true, page: null })
+}
+
+/**
+ * Every replacement that came from clicking the page, keyed by the text it replaces.
+ *
+ * Lets the picker mark a run as already changed, and lets a second click on the same word edit
+ * the existing rule rather than stack another one on top of it.
+ */
+const pickedRuns = computed(() =>
+  Object.fromEntries(
+    replacements.value.filter((r) => r.picked && r.find).map((r) => [r.find, r.replace]),
+  ),
+)
+
+function applyPick({ find, replace, page }: { find: string; replace: string; page: number }) {
+  const existing = replacements.value.find((r) => r.find === find && r.page === page)
+
+  if (existing) {
+    existing.replace = replace
+    return
+  }
+
+  // Scoped to the page it was clicked on. The same word elsewhere in the document is a different
+  // occurrence, and rewriting all of them is not what clicking one of them asked for.
+  const rule: Replacement = { find, replace, matchCase: true, page, picked: true }
+
+  // Reuse the blank starter row rather than leaving it stranded above the real rules.
+  const blank = replacements.value.findIndex((r) => !r.find && !r.replace)
+  if (blank >= 0) replacements.value.splice(blank, 1, rule)
+  else replacements.value.push(rule)
 }
 
 function remove(index: number) {
@@ -82,6 +115,22 @@ async function run(delivery: Delivery) {
       <div class="stack-4">
         <PwCard title="Document">
           <FileDrop v-model="files" />
+        </PwCard>
+
+        <PwCard
+          v-if="files.length"
+          title="Click a word to change it"
+          description="Edits are applied by replacing that exact text on that page"
+        >
+          <PdfTextPicker :file="files[0]" :edited-runs="pickedRuns" @pick="applyPick" />
+
+          <template #footer>
+            <p class="t-12 subtle" style="margin: 0">
+              The surrounding text does not reflow, so a much longer replacement can overlap what
+              follows it. Anything you change here appears in the list below, where it can be
+              adjusted or removed.
+            </p>
+          </template>
         </PwCard>
 
         <PwCard title="Replacements" :description="`${usable.length} of ${replacements.length} ready`">

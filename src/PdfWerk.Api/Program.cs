@@ -29,8 +29,13 @@ var builder = WebApplication.CreateBuilder(args);
  * Kudu by hand. ILogger output flows here too, so that same swallowed error is now a searchable
  * exception rather than a line in a file nobody reads.
  */
-var telemetryConnection = builder.Configuration["ApplicationInsights:ConnectionString"]
-                          ?? builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+// FirstConfigured, not ??. appsettings.json declares the key as "" so it is discoverable, and an
+// empty string is not null — so ?? stopped at the declaration and never reached the environment
+// variable App Service sets, which disabled telemetry on a correctly configured deployment
+// without a word being logged about it.
+var telemetryConnection = builder.Configuration.FirstConfigured(
+    "ApplicationInsights:ConnectionString",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING");
 
 if (!string.IsNullOrWhiteSpace(telemetryConnection))
 {
@@ -202,6 +207,14 @@ await InfrastructureServiceCollectionExtensions.InitialiseStorageAsync(app.Servi
 await BootstrapAdminAsync(app);
 
 WarnIfLimiterIsSingleProcess(app);
+
+// Stated explicitly, because "no telemetry" and "no traffic" look identical from the other end.
+app.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("PdfWerk.Telemetry")
+    .LogInformation(
+        string.IsNullOrWhiteSpace(telemetryConnection)
+            ? "Application Insights is off: no connection string is configured."
+            : "Application Insights is on.");
 
 app.Run();
 

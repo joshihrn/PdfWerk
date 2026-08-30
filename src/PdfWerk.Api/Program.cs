@@ -14,6 +14,30 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---- telemetry ----------------------------------------------------------
+
+/*
+ * Registered before anything else so a failure during start-up is still reported.
+ *
+ * The connection string comes from configuration and is absent by default, which turns the whole
+ * thing off — a self-hosted copy should not be made to send telemetry anywhere, and the local
+ * suite should not need a resource to run against.
+ *
+ * This exists because of a real outage: EF refused a migration, the failure was caught and logged
+ * so anonymous callers would keep working, and the site went on answering /health with 200 while
+ * every write returned 500. Nothing surfaced it. Finding it meant pulling container logs out of
+ * Kudu by hand. ILogger output flows here too, so that same swallowed error is now a searchable
+ * exception rather than a line in a file nobody reads.
+ */
+var telemetryConnection = builder.Configuration["ApplicationInsights:ConnectionString"]
+                          ?? builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+
+if (!string.IsNullOrWhiteSpace(telemetryConnection))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+        options.ConnectionString = telemetryConnection);
+}
+
 // ---- configuration ------------------------------------------------------
 
 builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));

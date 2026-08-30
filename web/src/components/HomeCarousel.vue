@@ -129,7 +129,7 @@ const facts = [
           <!-- ============ 1. what it is ============ -->
           <article class="slide" role="group" :aria-hidden="active !== 0" aria-roledescription="slide" aria-label="Slide 1 of 6: What is PdfWerk">
             <p class="slide__eyebrow">{{ slides[0].eyebrow }}</p>
-            <h3 class="slide__title">PDF operations as an HTTP API</h3>
+            <h3 class="slide__title">A PDF engine, wearing an HTTP endpoint</h3>
             <p class="slide__body">
               Create, edit, split, merge, fill and summarise PDFs. Every operation is one POST —
               through this page, a REST endpoint, or a widget dropped into your own app.

@@ -592,6 +592,25 @@ async function fill(delivery: Delivery) {
                 <PwField v-slot="{ id }" label="Height"><PwInput :id="id" v-model="selected.height" type="number" /></PwField>
               </div>
 
+              <div class="flags">
+                <PwCheckbox
+                  v-model="selected.required"
+                  label="Required"
+                  help="Readers mark it and refuse to submit without it"
+                />
+                <PwCheckbox
+                  v-model="selected.readOnly"
+                  label="Read-only"
+                  help="Shown but not editable — for a value you are supplying"
+                />
+                <PwCheckbox
+                  v-if="selected.type === 'Text'"
+                  v-model="selected.multiline"
+                  label="Multiple lines"
+                  help="Wraps and accepts line breaks"
+                />
+              </div>
+
               <PwField v-if="needsOptions" v-slot="{ id }" label="Options" help="One per line">
                 <PwTextarea :id="id" v-model="selected.options" :rows="4" />
               </PwField>
@@ -765,4 +784,13 @@ async function fill(delivery: Delivery) {
 }
 
 .pick { cursor: pointer; }
+
+/* Stacked rather than in the two-column grid above: the labels are different lengths and a
+   grid leaves the help text of the shorter one dangling. */
+.flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
 </style>

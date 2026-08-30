@@ -392,6 +392,23 @@ internal static class AcroFormWriter
         }
 
         field.Elements.SetInteger("/Ff", flags);
+
+        // Text and choice fields get an appearance drawn for them; checkboxes and radio groups
+        // already build their own above, and a signature field has nothing to show.
+        if (spec.Type is FormFieldType.Text or FormFieldType.Dropdown or FormFieldType.ListBox)
+        {
+            SetTextAppearance(
+                document,
+                field,
+                spec.Value,
+                spec.Rect.Width,
+                spec.Rect.Height,
+                spec.FontSize,
+                spec.BackgroundColor,
+                spec.BorderColor,
+                spec.Multiline);
+        }
+
         AttachToPage(document, page, field);
         return field;
     }
@@ -493,6 +510,118 @@ internal static class AcroFormWriter
         ap.Elements["/N"] = normal;
         return ap;
     }
+
+    /// <summary>
+    /// Draws a text or choice field's value into an appearance stream.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// /NeedAppearances asks the viewer to render the value itself, and the well-behaved ones do.
+    /// Chrome's built-in viewer and pdf.js largely ignore it, which between them covers most of
+    /// the people who will ever open the file — so a field carrying a perfectly good /V rendered
+    /// as an empty box, and a default value looked as though it had never been applied.
+    /// </para>
+    /// <para>
+    /// The flag stays set, because a viewer that honours it will redraw more accurately than this
+    /// can once someone starts typing. This is the fallback for the ones that do not.
+    /// </para>
+    /// </remarks>
+    public static void SetTextAppearance(
+        PdfDocument document,
+        PdfDictionary widget,
+        string? value,
+        double width,
+        double height,
+        double fontSize,
+        string? backgroundColor,
+        string? borderColor,
+        bool multiline)
+    {
+        if (width <= 0 || height <= 0)
+            return;
+
+        var content = new StringBuilder();
+        content.Append("q\n");
+
+        if (backgroundColor is not null)
+            content.Append(CultureInfo.InvariantCulture, $"{ColorOperator(backgroundColor, stroke: false)} 0 0 {F(width)} {F(height)} re f\n");
+
+        if (borderColor is not null)
+            content.Append(CultureInfo.InvariantCulture, $"{ColorOperator(borderColor, stroke: true)} 0.5 w 0.25 0.25 {F(width - 0.5)} {F(height - 0.5)} re S\n");
+
+        if (!string.IsNullOrEmpty(value))
+        {
+            // A concrete size, not zero. "/Helv 0 Tf" tells a viewer to auto-fit, and means
+            // nothing at all in a stream we write ourselves — it would render invisibly.
+            var size = fontSize > 0 ? fontSize : Math.Min(height * 0.62, 11);
+            const double Padding = 2.0;
+
+            // Clipped to the box, so text longer than the field is cut at the border rather than
+            // running across the page. That is what a viewer building its own appearance does.
+            content.Append(CultureInfo.InvariantCulture, $"1 1 {F(width - 2)} {F(height - 2)} re W n\n");
+            content.Append("BT\n");
+            content.Append(CultureInfo.InvariantCulture, $"/Helv {F(size)} Tf\n");
+            content.Append("0 g\n");
+
+            if (multiline)
+            {
+                var leading = size * 1.18;
+                var top = height - Padding - size;
+
+                content.Append(CultureInfo.InvariantCulture, $"{F(leading)} TL\n");
+                content.Append(CultureInfo.InvariantCulture, $"{F(Padding)} {F(top)} Td\n");
+
+                var first = true;
+
+                foreach (var line in value.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+                {
+                    if (!first)
+                        content.Append("T*\n");
+
+                    content.Append(CultureInfo.InvariantCulture, $"({EscapeLiteral(line)}) Tj\n");
+                    first = false;
+                }
+            }
+            else
+            {
+                // Centred on the box, which is what viewers do with a single line.
+                var baseline = ((height - size) / 2) + (size * 0.22);
+
+                content.Append(CultureInfo.InvariantCulture, $"{F(Padding)} {F(baseline)} Td\n");
+                content.Append(CultureInfo.InvariantCulture, $"({EscapeLiteral(value)}) Tj\n");
+            }
+
+            content.Append("ET\n");
+        }
+
+        content.Append("Q\n");
+
+        var xobject = new PdfDictionary(document);
+        xobject.Elements.SetName("/Type", "/XObject");
+        xobject.Elements.SetName("/Subtype", "/Form");
+        xobject.Elements["/BBox"] = new PdfArray(document,
+            new PdfReal(0), new PdfReal(0), new PdfReal(width), new PdfReal(height));
+
+        var fonts = new PdfDictionary(document);
+        fonts.Elements["/Helv"] = StandardFont(document, "/Helvetica", withEncoding: true);
+
+        var resources = new PdfDictionary(document);
+        resources.Elements["/Font"] = fonts;
+        xobject.Elements["/Resources"] = resources;
+
+        xobject.CreateStream(Encoding.ASCII.GetBytes(content.ToString()));
+        document.Internals.AddObject(xobject);
+
+        var appearance = new PdfDictionary(document);
+        appearance.Elements["/N"] = Ref(xobject);
+        widget.Elements["/AP"] = appearance;
+    }
+
+    /// <summary>Escapes the characters that would end or nest a PDF literal string.</summary>
+    private static string EscapeLiteral(string value) => value
+        .Replace(@"\", @"\\", StringComparison.Ordinal)
+        .Replace("(", @"\(", StringComparison.Ordinal)
+        .Replace(")", @"\)", StringComparison.Ordinal);
 
     /// <summary>
     /// Builds one form XObject. When /AP is present viewers ignore /MK for rendering, so the

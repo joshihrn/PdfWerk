@@ -123,8 +123,75 @@ public sealed class PdfFormService : IPdfFormService
             default:
                 field.Field.Elements["/V"] = PdfText(value);
                 SyncChoiceIndex(field, value);
+                RedrawTextWidgets(field, value);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Redraws each widget so the value is visible without a form-aware viewer.
+    /// </summary>
+    /// <remarks>
+    /// /NeedAppearances is still set, and a viewer that honours it will replace this the moment
+    /// the field is touched. Chrome's viewer and pdf.js do not honour it, and between them that
+    /// is most of the people who will open the file — for them a filled field would otherwise
+    /// render as an empty box.
+    /// </remarks>
+    private static void RedrawTextWidgets(IndexedField field, string value)
+    {
+        foreach (var widget in field.Widgets)
+        {
+            var rect = widget.Elements.GetRectangle("/Rect");
+            if (rect.Width <= 0 || rect.Height <= 0)
+                continue;
+
+            var document = widget.Owner;
+            if (document is null)
+                continue;
+
+            // Font size from the field's own /DA where it carries one, so a filled value matches
+            // the size the form was designed at rather than reverting to a default.
+            var size = FontSizeFromDefaultAppearance(field);
+
+            AcroFormWriter.SetTextAppearance(
+                document,
+                widget,
+                value,
+                rect.Width,
+                rect.Height,
+                size,
+                backgroundColor: null,
+                borderColor: null,
+                multiline: (field.Flags & FlagMultiline) != 0);
+        }
+    }
+
+    /// <summary>Bit 13 of a text field's flags, counting from one: the multiline flag.</summary>
+    private const int FlagMultiline = 1 << 12;
+
+    /// <summary>
+    /// Reads the point size out of a "/Helv 11 Tf" style default appearance string.
+    /// </summary>
+    /// <remarks>
+    /// Returns zero when the form says zero, which in a /DA means "fit the box". The drawing
+    /// code turns that into a real size; it cannot be passed through as a literal zero because
+    /// a zero-point font renders nothing.
+    /// </remarks>
+    private static double FontSizeFromDefaultAppearance(IndexedField field)
+    {
+        var da = field.Field.Elements.GetString("/DA");
+        if (string.IsNullOrWhiteSpace(da))
+            return 0;
+
+        var match = System.Text.RegularExpressions.Regex.Match(da, @"([\d.]+)\s+Tf");
+
+        return match.Success
+               && double.TryParse(match.Groups[1].Value,
+                   System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out var size)
+            ? size
+            : 0;
     }
 
     /// <summary>

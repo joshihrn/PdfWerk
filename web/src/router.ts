@@ -11,6 +11,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/create', name: 'create', component: () => import('./views/CreateTextView.vue') },
   { path: '/word', name: 'word', component: () => import('./views/WordView.vue') },
   { path: '/edit', name: 'edit', component: () => import('./views/EditTextView.vue') },
+  { path: '/annotate', name: 'annotate', component: () => import('./views/AnnotateView.vue') },
   { path: '/merge', name: 'merge', component: () => import('./views/MergeView.vue') },
   { path: '/pages', name: 'pages', component: () => import('./views/PagesView.vue') },
   { path: '/forms', name: 'forms', component: () => import('./views/FormsView.vue') },

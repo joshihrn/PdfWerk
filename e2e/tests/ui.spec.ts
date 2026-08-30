@@ -2127,3 +2127,69 @@ test.describe('inline text editing', () => {
     await expect(page.getByRole('textbox', { name: 'Find' }).first()).toHaveValue('')
   })
 })
+
+test.describe('adding text', () => {
+  /**
+   * The gap this closes: find-and-replace can change or remove words already on the page, but
+   * never write into blank space. These check that a click on bare paper puts text there and
+   * that it reaches the document.
+   */
+  test('clicking the page adds text where it was clicked', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+
+    await page.goto('/annotate')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    const picker = page.locator('.picker__page')
+    await expect(picker).toHaveAttribute('data-ready', 'true', { timeout: 30_000 })
+
+    // Low on the page, well clear of the rendered paragraph, so this is genuinely blank paper.
+    await picker.click({ position: { x: 120, y: 420 } })
+
+    await page.getByRole('textbox', { name: 'Text' }).fill('Ada Lovelace')
+
+    // Shown on the page before anything is sent, so the position can be judged without a round trip.
+    await expect(page.locator('.picker__ghost')).toContainText('Ada Lovelace')
+  })
+
+  test('the added text reaches the document', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+
+    await page.goto('/annotate')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await expect(page.locator('.picker__page')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 })
+    await page.locator('.picker__page').click({ position: { x: 120, y: 420 } })
+    await page.getByRole('textbox', { name: 'Text' }).fill('Ada Lovelace')
+
+    await page.getByRole('button', { name: 'Apply & preview' }).click()
+
+    await expect(page.locator('iframe[title="Result preview"]')).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('nothing can be sent until there is something to add', async ({ page, request }) => {
+    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+
+    await page.goto('/annotate')
+    await page.setInputFiles('input[type="file"]', {
+      name: 'contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: pdf,
+    })
+
+    await expect(page.locator('.picker__page')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 })
+
+    // A placement with no text yet is not something to send.
+    await page.locator('.picker__page').click({ position: { x: 120, y: 420 } })
+
+    await expect(page.getByRole('button', { name: 'Apply & preview' })).toBeDisabled()
+  })
+})

@@ -88,6 +88,7 @@ builder.Services.AddSingleton<IPdfInspector, PdfInspector>();
 builder.Services.AddSingleton<IPdfSplitter, PdfSplitter>();
 builder.Services.AddSingleton<IPdfRotator, PdfRotator>();
 builder.Services.AddSingleton<IPdfWatermarker, PdfWatermarker>();
+    builder.Services.AddSingleton<IPdfAnnotator, PdfAnnotator>();
 builder.Services.AddSingleton<IPdfProtector, PdfProtector>();
 
 builder.Services.AddSingleton<IWordConverter, LibreOfficeWordConverter>();

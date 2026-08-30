@@ -43,6 +43,16 @@ public enum PdfWerkAction
     Protect,
 
     /// <summary>
+    /// Draw new text or shapes onto an existing page.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="EditText"/>, which can only change words already on the page.
+    /// This one writes into blank space, which is what signing a line or filling a gap in a
+    /// scanned form actually needs.
+    /// </remarks>
+    Annotate,
+
+    /// <summary>
     /// Draft a document body from a brief, before rendering it.
     /// </summary>
     /// <remarks>
@@ -92,6 +102,8 @@ public static class ActionCatalog
             "Combine several PDFs into a single document, in order.", false),
         new(PdfWerkAction.Summarize, "summarize", "Summarize a PDF",
             "Extract the text and produce a structured AI summary.", true),
+        new(PdfWerkAction.Annotate, "annotate", "Add text to a PDF",
+            "Write text or draw shapes anywhere on a page, including blank space.", false),
         new(PdfWerkAction.DraftDocument, "create/draft", "Draft a PDF from a prompt",
             "Describe the document you want and have it written, then rendered.", true),
         new(PdfWerkAction.Inspect, "inspect", "Inspect a PDF",

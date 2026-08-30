@@ -18,10 +18,20 @@ const props = defineProps<{
   file: File | null
   /** Text already spoken for by a replacement, so those runs can be marked as edited. */
   editedRuns?: Record<string, string>
+  /**
+   * Clicking empty space adds text there instead of doing nothing.
+   *
+   * Off by default: on the editing screen a stray click should not silently start writing on
+   * someone's document.
+   */
+  allowPlacement?: boolean
+  /** Text already placed, drawn as ghosts so it can be seen before the document is rendered. */
+  placed?: { page: number; x: number; y: number; text: string; fontSize: number }[]
 }>()
 
 const emit = defineEmits<{
   pick: [payload: { find: string; replace: string; page: number }]
+  place: [payload: { page: number; x: number; y: number }]
   pages: [count: number]
 }>()
 
@@ -42,6 +52,9 @@ const runs = ref<TextRun[]>([])
 const pageCount = ref(0)
 const currentPage = ref(1)
 const rendering = ref(false)
+
+/** Screen pixels per PDF point, so a click can be reported in the document's own units. */
+const pageScale = ref(1)
 const failure = ref<string | null>(null)
 
 const editingId = ref<string | null>(null)
@@ -97,6 +110,7 @@ async function render() {
 
     const base = page.getViewport({ scale: 1 })
     const scale = Math.min(measureAvailableWidth() / base.width, 1.5)
+    pageScale.value = scale
     const viewport = page.getViewport({ scale: scale * window.devicePixelRatio })
 
     const context = target.getContext('2d')
@@ -167,6 +181,36 @@ function cancel() {
   editingId.value = null
 }
 
+/**
+ * A click on bare page, reported in PDF points from the top-left.
+ *
+ * Runs are buttons that stop the event, so anything reaching here is genuinely empty space.
+ */
+function placeAt(event: MouseEvent) {
+  if (!props.allowPlacement) return
+
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+
+  emit('place', {
+    page: currentPage.value,
+    x: Math.round((event.clientX - box.left) / pageScale.value),
+    y: Math.round((event.clientY - box.top) / pageScale.value),
+  })
+}
+
+/** Placed text belonging to the page on screen, positioned in screen pixels. */
+const ghosts = computed(() =>
+  (props.placed ?? [])
+    .filter((p) => p.page === currentPage.value)
+    .map((p, index) => ({
+      key: `${p.page}:${index}`,
+      text: p.text,
+      left: p.x * pageScale.value,
+      top: p.y * pageScale.value,
+      size: p.fontSize * pageScale.value,
+    })),
+)
+
 watch(() => props.file, () => {
   currentPage.value = 1
   void render()
@@ -194,8 +238,22 @@ onBeforeUnmount(() => observer?.disconnect())
 
     <p v-if="failure" role="alert" class="picker__error">{{ failure }}</p>
 
-    <div ref="wrap" class="picker__page" :data-ready="!rendering">
+    <div
+      ref="wrap"
+      class="picker__page"
+      :class="{ 'picker__page--placing': allowPlacement }"
+      :data-ready="!rendering"
+      @click="placeAt"
+    >
       <canvas ref="canvas" />
+
+      <span
+        v-for="ghost in ghosts"
+        :key="ghost.key"
+        class="picker__ghost"
+        :style="{ left: `${ghost.left}px`, top: `${ghost.top}px`, fontSize: `${ghost.size}px` }"
+        aria-hidden="true"
+      >{{ ghost.text }}</span>
 
       <button
         v-for="run in runs"
@@ -210,7 +268,7 @@ onBeforeUnmount(() => observer?.disconnect())
           height: `${run.height}px`,
         }"
         :aria-label="`Edit “${run.text}”`"
-        @click="beginEdit(run)"
+        @click.stop="beginEdit(run)"
       />
 
       <input
@@ -297,6 +355,23 @@ onBeforeUnmount(() => observer?.disconnect())
 /* Already spoken for by a replacement, so it reads as changed without being opened. */
 .picker__run--edited {
   background: color-mix(in srgb, var(--ok-fg, #16a34a) 20%, transparent);
+}
+
+/* A text cursor over the page, so it reads as somewhere you can write. */
+.picker__page--placing { cursor: text; }
+
+/*
+ * Placed text is shown before the document is rendered, so its position can be judged without a
+ * round trip. It is an approximation of the final drawing, not the drawing itself.
+ */
+.picker__ghost {
+  position: absolute;
+  line-height: 1.2;
+  color: var(--fg);
+  white-space: pre;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .picker__input {

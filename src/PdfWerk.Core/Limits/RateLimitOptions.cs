@@ -139,6 +139,11 @@ public sealed class RateLimitOptions
                     PerMinute = 3, PerHour = 20, PerDay = 60, Concurrent = 1,
                     MaxUploadBytes = 15 * 1024 * 1024, MaxPages = 100, MaxBatch = 1, MaxCharacters = 200_000,
                 },
+                [nameof(PdfWerkAction.Annotate)] = new ActionLimit
+                {
+                    PerMinute = 3, PerHour = 20, PerDay = 60, Concurrent = 1,
+                    MaxUploadBytes = 15 * 1024 * 1024, MaxPages = 100, MaxBatch = 1, MaxCharacters = 200_000,
+                },
                 [nameof(PdfWerkAction.Inspect)] = new ActionLimit
                 {
                     PerMinute = 20, PerHour = 200, PerDay = 600, Concurrent = 4,
@@ -181,6 +186,11 @@ public sealed class RateLimitOptions
                     MaxUploadBytes = 0, MaxPages = 0, MaxBatch = 1, MaxCharacters = 8_000,
                 },
                 [nameof(PdfWerkAction.CreateFromWord)] = new ActionLimit
+                {
+                    PerMinute = 10, PerHour = 120, PerDay = 500, Concurrent = 2,
+                    MaxUploadBytes = 40 * 1024 * 1024, MaxPages = 500, MaxBatch = 1, MaxCharacters = 500_000,
+                },
+                [nameof(PdfWerkAction.Annotate)] = new ActionLimit
                 {
                     PerMinute = 10, PerHour = 120, PerDay = 500, Concurrent = 2,
                     MaxUploadBytes = 40 * 1024 * 1024, MaxPages = 500, MaxBatch = 1, MaxCharacters = 500_000,

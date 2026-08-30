@@ -224,6 +224,38 @@ public static class PdfEndpoints
             .WithSummary("Find and replace text inside an existing PDF.")
             .DisableAntiforgery();
 
+        /*
+         * Adding text, as distinct from changing it.
+         *
+         * /edit/text can only rewrite words already on the page, so there was no way to write
+         * into blank space — to sign a line, or fill a gap in a scanned form. This draws into the
+         * page's content stream, so the result prints and survives flattening rather than living
+         * in a comment layer a viewer can switch off.
+         */
+        v1.MapPost("/annotate", (
+                HttpContext context,
+                ActionRunner runner,
+                IPdfAnnotator annotator) =>
+                runner.RunAsync(context, PdfWerkAction.Annotate, async (limit, ct) =>
+                {
+                    var form = await context.Request.ReadFormAsync(ct).ConfigureAwait(false);
+                    var file = form.Files["file"];
+
+                    var pdf = await RequestGuard.ReadAsync(file, limit, ct).ConfigureAwait(false);
+                    RequestGuard.RequirePageBudget(pdf, limit, file!.FileName);
+
+                    var request = RequestGuard.RequireJsonPart<AnnotateRequest>(form, "request");
+                    RequestGuard.RequireBatchBudget(request.Items.Count, limit, "items");
+
+                    return ApiResults.Document(
+                        annotator.Annotate(pdf, request),
+                        ApiResults.DeliveryFrom(context.Request),
+                        new Dictionary<string, object> { ["items"] = request.Items.Count });
+                }))
+            .WithName("Annotate")
+            .WithSummary("Draw text or shapes onto a page, including empty space.")
+            .DisableAntiforgery();
+
         v1.MapPost("/inspect", (
                 HttpContext context,
                 IFormFile file,

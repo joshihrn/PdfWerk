@@ -41,6 +41,62 @@ public sealed record CreateFromTextRequest
 
 }
 
+/// <summary>What to draw onto a page.</summary>
+public enum AnnotateItemType { Text, Rectangle, Line }
+
+/// <summary>
+/// One thing to draw, positioned from the top-left of the page in points.
+/// </summary>
+/// <remarks>
+/// Top-left rather than PDF's bottom-left origin, matching <see cref="FieldRect"/> and the
+/// designer's canvas — so a coordinate taken from one part of the UI means the same thing
+/// everywhere.
+/// </remarks>
+public sealed record AnnotateItem
+{
+    public AnnotateItemType Type { get; init; } = AnnotateItemType.Text;
+
+    /// <summary>1-based page number.</summary>
+    public required int Page { get; init; }
+
+    public required double X { get; init; }
+
+    public required double Y { get; init; }
+
+    /// <summary>For text, the wrap width; zero draws a single unwrapped line.</summary>
+    public double Width { get; init; }
+
+    /// <summary>For text, the clip height; zero lets it run as long as it needs.</summary>
+    public double Height { get; init; }
+
+    public string? Text { get; init; }
+
+    public double FontSize { get; init; } = 11;
+
+    public string FontFamily { get; init; } = "Helvetica";
+
+    public bool Bold { get; init; }
+
+    public bool Italic { get; init; }
+
+    /// <summary>#RRGGBB. Defaults to black.</summary>
+    public string? Color { get; init; }
+
+    public double Opacity { get; init; } = 1;
+
+    /// <summary>Stroke width for lines and unfilled rectangles.</summary>
+    public double LineWidth { get; init; } = 1;
+
+    /// <summary>Fill a rectangle rather than outline it.</summary>
+    public bool Filled { get; init; }
+}
+
+/// <summary>Draw text and shapes onto an existing document.</summary>
+public sealed record AnnotateRequest
+{
+    public required IReadOnlyList<AnnotateItem> Items { get; init; }
+}
+
 /// <summary>A brief to draft a document from.</summary>
 public sealed record DraftRequest
 {

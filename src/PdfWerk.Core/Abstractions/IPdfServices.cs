@@ -41,6 +41,12 @@ public interface IPdfTextExtractor
     IReadOnlyList<string> ExtractPages(byte[] pdf);
 }
 
+/// <summary>Draws new text and shapes onto an existing page.</summary>
+public interface IPdfAnnotator
+{
+    PdfArtifact Annotate(byte[] pdf, AnnotateRequest request);
+}
+
 /// <summary>Reports structural metadata without modifying the document.</summary>
 public interface IPdfInspector
 {

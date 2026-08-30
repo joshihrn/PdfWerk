@@ -260,6 +260,20 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Draws text or shapes onto an existing page, including empty space. */
+  annotate: (file: File, request: Record<string, unknown>, delivery: Delivery) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('request', JSON.stringify(request))
+
+    return requestDocument(
+      '/v1/annotate',
+      { method: 'POST', headers: authHeaders(), body: form },
+      delivery,
+      'annotated.pdf',
+    )
+  },
+
   createFromWord: (file: File, delivery: Delivery) => {
     const form = new FormData()
     form.append('file', file)

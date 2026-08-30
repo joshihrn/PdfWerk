@@ -80,6 +80,7 @@ const nav = [
   { to: '/create', label: 'Create' },
   { to: '/word', label: 'Word' },
   { to: '/edit', label: 'Edit text' },
+  { to: '/annotate', label: 'Add text' },
   { to: '/forms', label: 'Forms' },
   { to: '/merge', label: 'Merge' },
   { to: '/pages', label: 'Pages' },

@@ -84,6 +84,15 @@
     <div>
       <div id="pdf-summarize"></div>
     </div>
+    <div>
+      <div id="pdf-split"></div>
+    </div>
+    <div>
+      <div id="pdf-rotate"></div>
+    </div>
+    <div>
+      <div id="pdf-watermark"></div>
+    </div>
   </div>
 
   <h2>Callback output</h2>
@@ -140,9 +149,19 @@
     onError: (e) => say(`summarize failed → ${e.message}`),
   })
 
-  // Fails loudly rather than silently rendering three of six: a demo that quietly drops a tool
-  // is worse than no demo, because it looks complete.
-  const mounted = ['create', 'merge', 'inspect', 'fill', 'word', 'summarize']
+  for (const tool of ['split', 'rotate', 'watermark']) {
+    PdfWerk.mount(`#pdf-${tool}`, {
+      tool,
+      delivery: 'preview',
+      onResult: (blob, meta) => say(`${tool} → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB`),
+      onError: (e) => say(`${tool} failed → ${e.message}`),
+    })
+  }
+
+  // Fails loudly rather than silently rendering a subset: a demo that quietly drops a tool is
+  // worse than no demo, because it looks complete. This caught three missing tools when the
+  // widget's list turned out to be longer than the page assumed.
+  const mounted = ['create', 'merge', 'inspect', 'fill', 'word', 'summarize', 'split', 'rotate', 'watermark']
   const missing = PdfWerk.tools.filter((t) => !mounted.includes(t))
 
   if (missing.length) say(`NOT SHOWN ON THIS PAGE → ${missing.join(', ')}`)

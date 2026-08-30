@@ -1232,7 +1232,7 @@ test.describe('annotate', () => {
 
   test('text can be added where there was none', async ({ request }) => {
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key, 'A mostly empty page.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     const response = await request.post('/v1/annotate', {
       headers: { 'X-Api-Key': key },
@@ -1258,7 +1258,7 @@ test.describe('annotate', () => {
 
   test('a page that does not exist is refused with a readable message', async ({ request }) => {
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key, 'One page only.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     const response = await request.post('/v1/annotate', {
       headers: { 'X-Api-Key': key },
@@ -1274,7 +1274,7 @@ test.describe('annotate', () => {
 
   test('an empty request says what is missing', async ({ request }) => {
     const key = await apiKey(request)
-    const pdf = await makePdf(request, key, 'One page only.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     const response = await request.post('/v1/annotate', {
       headers: { 'X-Api-Key': key },

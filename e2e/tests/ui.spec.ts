@@ -2135,7 +2135,7 @@ test.describe('adding text', () => {
    * that it reaches the document.
    */
   test('clicking the page adds text where it was clicked', async ({ page, request }) => {
-    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     await page.goto('/annotate')
     await page.setInputFiles('input[type="file"]', {
@@ -2157,7 +2157,7 @@ test.describe('adding text', () => {
   })
 
   test('the added text reaches the document', async ({ page, request }) => {
-    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     await page.goto('/annotate')
     await page.setInputFiles('input[type="file"]', {
@@ -2176,7 +2176,7 @@ test.describe('adding text', () => {
   })
 
   test('nothing can be sent until there is something to add', async ({ page, request }) => {
-    const pdf = await makePdf(request, await apiKey(request), 'A mostly empty page.', 'Contract')
+    const pdf = await sharedPdf(request)
 
     await page.goto('/annotate')
     await page.setInputFiles('input[type="file"]', {
@@ -2209,6 +2209,15 @@ test.describe('embed demo harness', () => {
     await page.goto('/api')
 
     const link = page.getByRole('link', { name: 'Open the live examples' })
+    await expect(link).toHaveAttribute('href', '/embed-demo.html')
+  })
+
+  test('the footer reaches it from every page', async ({ page }) => {
+    await page.goto('/inspect')
+
+    // The footer rather than the header: the header nav is tools, and this is documentation.
+    const link = page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Embed widgets' })
+
     await expect(link).toHaveAttribute('href', '/embed-demo.html')
   })
 })

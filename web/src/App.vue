@@ -184,6 +184,12 @@ const nav = [
       </div>
 
       <nav class="app-footer__links" aria-label="Site">
+        <!--
+          The footer, not the header. The header nav is labelled "Tools" and already scrolls on a
+          narrow screen; the embed demo is documentation, and this is where the other
+          documentation-shaped links live.
+        -->
+        <a href="/embed-demo.html" target="_blank" rel="noopener">Embed widgets</a>
         <RouterLink to="/contact">Contact</RouterLink>
         <RouterLink to="/privacy">Privacy</RouterLink>
         <RouterLink to="/terms">Terms</RouterLink>

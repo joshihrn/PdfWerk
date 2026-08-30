@@ -168,12 +168,33 @@ public sealed class FileSystemFontResolver : IFontResolver
         ];
     }
 
-    /// <summary>Installs this resolver globally. Safe to call more than once.</summary>
+    private static readonly Lock InstallGate = new();
+
+    /// <summary>
+    /// Installs this resolver globally. Safe to call more than once, and from several threads.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GlobalFontSettings.FontResolver"/> is process-wide mutable state, and three
+    /// static constructors race to set it. Checking and then assigning without a lock lets two
+    /// threads both decide the resolver is missing and both install one — so a render already in
+    /// progress can have the resolver swapped underneath it, and fail to find a face it had just
+    /// resolved. That showed up as a conversion test failing roughly once in a hundred runs and
+    /// passing on its own every time afterwards.
+    ///
+    /// The check is repeated inside the lock: without that, the second thread would still assign
+    /// after waiting, which is the bug rather than a fix for it.
+    /// </remarks>
     public static void Install()
     {
         if (GlobalFontSettings.FontResolver is FileSystemFontResolver)
             return;
 
-        GlobalFontSettings.FontResolver = new FileSystemFontResolver();
+        lock (InstallGate)
+        {
+            if (GlobalFontSettings.FontResolver is FileSystemFontResolver)
+                return;
+
+            GlobalFontSettings.FontResolver = new FileSystemFontResolver();
+        }
     }
 }

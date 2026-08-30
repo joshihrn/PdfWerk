@@ -180,6 +180,30 @@ var app = builder.Build();
 
 // ---- pipeline -----------------------------------------------------------
 
+/*
+ * www redirects to the apex, permanently.
+ *
+ * www.pdfwerk.com is bound and certificated so it never dead-ends a visitor who typed it, but
+ * serving identical content on two hostnames is worse than the alternative: it splits backlinks
+ * and search signal between them, and a crawler that treats them as distinct sites can flag the
+ * pair as duplicate content. A 301 here consolidates everything onto the one canonical host.
+ *
+ * Ahead of CORS and the audit middleware, because a redirect is the entire response — nothing
+ * downstream needs to run, and logging "www" as a separate visited host would misreport traffic
+ * that never actually reached the app under that name.
+ */
+app.Use(async (context, next) =>
+{
+    if (string.Equals(context.Request.Host.Host, "www.pdfwerk.com", StringComparison.OrdinalIgnoreCase))
+    {
+        var target = $"https://pdfwerk.com{context.Request.Path}{context.Request.QueryString}";
+        context.Response.Redirect(target, permanent: true);
+        return;
+    }
+
+    await next(context).ConfigureAwait(false);
+});
+
 app.UseCors();
 
 // Ahead of everything else: a blocked caller should not reach the rate limiter, the key store or

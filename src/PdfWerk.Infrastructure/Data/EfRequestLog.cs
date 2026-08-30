@@ -145,14 +145,78 @@ public sealed class EfRequestLog(
         return await context.RequestLog.LongCountAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>How many rows the fallback examines at a time.</summary>
+    /// <remarks>
+    /// Large enough that pruning a long backlog does not take all day, small enough that neither
+    /// the projection nor the delete holds a write lock over the whole table while requests are
+    /// still arriving.
+    /// </remarks>
+    private const int PruneBatchSize = 1000;
+
     public async Task<int> PruneAsync(DateTimeOffset olderThan, CancellationToken ct = default)
     {
         await using var context = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
 
-        return await context.RequestLog
-            .Where(l => l.At < olderThan)
-            .ExecuteDeleteAsync(ct)
-            .ConfigureAwait(false);
+        /*
+         * One statement where the provider can express the comparison, a paged sweep where it
+         * cannot.
+         *
+         * SQLite has no server-side notion of an offset: EF stores a DateTimeOffset as text and
+         * refuses to translate a comparison against one at all — not merely inside ExecuteDelete,
+         * but in any Where clause. On SQLite this threw on every pass, and the pruner caught and
+         * logged it, so the log grew without bound on exactly the deployments least able to
+         * afford it and nothing said so out loud.
+         *
+         * The fallback therefore reads keys and timestamps only, decides in memory, and deletes
+         * by key — which does translate. Pages are bounded so memory does not track table size.
+         *
+         * Postgres keeps the single-statement path, and that is what production runs.
+         */
+        if (context.Database.IsNpgsql())
+        {
+            return await context.RequestLog
+                .Where(l => l.At < olderThan)
+                .ExecuteDeleteAsync(ct)
+                .ConfigureAwait(false);
+        }
+
+        var removed = 0;
+        var offset = 0;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Id order, not time order: Ids are stable while rows are being deleted underneath
+            // the sweep, and only the ordering has to be stable for paging to terminate.
+            var page = await context.RequestLog
+                .OrderBy(l => l.Id)
+                .Skip(offset)
+                .Take(PruneBatchSize)
+                .Select(l => new { l.Id, l.At })
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+
+            if (page.Count == 0)
+                return removed;
+
+            var doomed = page.Where(l => l.At < olderThan).Select(l => l.Id).ToList();
+
+            if (doomed.Count > 0)
+            {
+                removed += await context.RequestLog
+                    .Where(l => doomed.Contains(l.Id))
+                    .ExecuteDeleteAsync(ct)
+                    .ConfigureAwait(false);
+            }
+
+            // Rows that survived stay in front of the cursor, so the next page has to start
+            // after them. Without this the sweep re-reads the same survivors for ever.
+            offset += page.Count - doomed.Count;
+
+            if (page.Count < PruneBatchSize)
+                return removed;
+        }
     }
 
     public void Dispose()

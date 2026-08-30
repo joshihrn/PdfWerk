@@ -13,3 +13,9 @@ src/PdfWerk.Api/wwwroot/
 .idea/
 *.db
 *.user
+
+# SQLite writes these beside the database while a server is running, and removes them
+# when it stops. A build started during development would otherwise fail on a file that
+# existed when the context was listed and was gone by the time it was read.
+*.db-shm
+*.db-wal

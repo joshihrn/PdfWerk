@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api, type ActionDescriptor, type ProviderInfo } from '../api/client'
 import { PwBadge, PwButton, PwCallout, PwCard } from '../components/ui'
-import HomeExplainer from '../components/HomeExplainer.vue'
+import HomeCarousel from '../components/HomeCarousel.vue'
 
 const actions = ref<ActionDescriptor[]>([])
 const providers = ref<ProviderInfo[]>([])
@@ -85,7 +85,7 @@ const tiers = [
       Could not load the action catalogue. Is the server running on port 5272?
     </PwCallout>
 
-    <HomeExplainer v-if="actions.length" :actions="actions" />
+    <HomeCarousel v-if="actions.length" :actions="actions" />
 
     <!-- ---- operations ---- -->
     <section>

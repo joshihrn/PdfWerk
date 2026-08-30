@@ -2222,77 +2222,135 @@ test.describe('embed demo harness', () => {
   })
 })
 
-test.describe('home explainer', () => {
+test.describe('home carousel', () => {
   /**
-   * The silent explainer that narrates the name, the integration paths and the operation list
-   * once the section scrolls into view. Checked as a sequence rather than only its end state,
-   * because the interesting bugs here are in the sequencing — a phase that never advances, or
-   * advances before its content is real.
+   * Six numbered steps: what the product is, why it's named that, what it does, a few facts
+   * worth knowing, how the page above calls the same API, and how to embed it. Replaced an
+   * earlier scroll-triggered explainer that was not the format asked for — this is a proper
+   * carousel, navigable three ways (rail, arrows, keyboard), auto-advancing when idle.
    */
-  test('plays through in order and settles', async ({ page }) => {
+  const LABELS = [
+    'What is PdfWerk',
+    'Why "PdfWerk"',
+    'What it does',
+    'A few things worth knowing',
+    'One API, same endpoints',
+    'Drop it into any page',
+  ]
+
+  test('the rail lists all six steps, in order, and clicking one moves to it', async ({ page }) => {
     await page.goto('/')
-    await page.locator('.explainer').scrollIntoViewIfNeeded()
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
 
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '1', { timeout: 4000 })
-    await expect(page.getByText('Werk — German for a work, or a workshop.')).toBeVisible()
+    await expect(page.locator('.rail__label')).toHaveText(LABELS)
 
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '2', { timeout: 4000 })
-    await expect(page.getByText('One POST. Three ways in.')).toBeVisible()
-
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '3', { timeout: 5000 })
-
-    // Settles rather than looping: an explainer that plays forever reads as an advertisement,
-    // which is exactly what the rest of the homepage's copy is written to avoid.
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 5000 })
-    await expect(page.getByRole('button', { name: 'Play the explainer again' })).toBeVisible()
+    for (let i = 0; i < LABELS.length; i++) {
+      await page.locator('.rail__item').nth(i).click()
+      await expect(page.locator('.stage__track')).toHaveCSS('transform', await page.evaluate((n) => {
+        const m = new DOMMatrix().translate(-n * (document.querySelector('.stage').clientWidth), 0)
+        return m.toString()
+      }, i))
+      await expect(page.locator('.rail__item').nth(i)).toHaveAttribute('aria-current', 'true')
+    }
   })
 
-  test('shows every real operation, not a curated subset', async ({ page }) => {
+  test('the arrows advance and wrap around at both ends', async ({ page }) => {
     await page.goto('/')
-    await page.locator('.explainer').scrollIntoViewIfNeeded()
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 15_000 })
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
+
+    const next = page.getByRole('button', { name: 'Next slide' })
+    const prev = page.getByRole('button', { name: 'Previous slide' })
+
+    // From the last slide, next wraps to the first — a carousel that dead-ends does not feel
+    // like one.
+    await page.locator('.rail__item').last().click()
+    await next.click()
+    await expect(page.locator('.rail__item').first()).toHaveAttribute('aria-current', 'true')
+
+    await prev.click()
+    await expect(page.locator('.rail__item').last()).toHaveAttribute('aria-current', 'true')
+  })
+
+  test('the left and right arrow keys navigate when the carousel has focus', async ({ page }) => {
+    await page.goto('/')
+    const carousel = page.locator('.carousel')
+    await carousel.scrollIntoViewIfNeeded()
+    await carousel.focus()
+
+    await page.keyboard.press('ArrowRight')
+    await expect(page.locator('.rail__item').nth(1)).toHaveAttribute('aria-current', 'true')
+
+    await page.keyboard.press('ArrowLeft')
+    await expect(page.locator('.rail__item').first()).toHaveAttribute('aria-current', 'true')
+  })
+
+  test('the feature slide lists every real operation, not a curated subset', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
+    await page.locator('.rail__item').nth(2).click()
 
     const actions = await (await page.request.get('/v1/actions')).json()
-    const chips = await page.locator('.chip').allTextContents()
+    const items = await page.locator('.feature-group__items li').allTextContents()
 
-    // A hand-picked "greatest hits" grid would misstate what the product does the moment a
-    // fifteenth operation ships and nobody remembers to add it to the animation too.
-    expect(chips).toHaveLength(actions.length)
-    for (const action of actions) expect(chips).toContain(action.title)
+    // A hand-curated highlight reel would misstate the product the moment a fifteenth
+    // operation ships and nobody remembers to update the carousel too.
+    expect(items).toHaveLength(actions.length)
+    for (const action of actions) expect(items).toContain(action.title)
   })
 
-  test('replay restarts the sequence from the beginning', async ({ page }) => {
+  test('the API slide and the embed slide link to the real reference pages', async ({ page }) => {
     await page.goto('/')
-    await page.locator('.explainer').scrollIntoViewIfNeeded()
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 15_000 })
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
 
-    const replay = page.getByRole('button', { name: 'Play the explainer again' })
-    await replay.click()
+    await page.locator('.rail__item').nth(4).click()
+    await expect(page.locator('.slide[aria-hidden="false"] a[href="/docs"]')).toBeVisible()
 
-    // The transition through phase 0 is a single tick, too fast for a polling assertion to
-    // reliably catch. The real signal is the round trip: the control this state gates
-    // disappears, and once the sequence has run again, reappears.
-    await expect(replay).toHaveCount(0)
-    await expect(replay).toBeVisible({ timeout: 15_000 })
+    await page.locator('.rail__item').nth(5).click()
+    await expect(page.locator('.slide[aria-hidden="false"] a[href="/embed-demo.html"]')).toBeVisible()
   })
 
-  test('reduced motion skips straight to the settled state', async ({ page }) => {
-    // No sequence to watch, so nothing worth making someone wait for.
+  test('clicking a rail item stops autoplay, so it does not fight a reader', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
+
+    await page.locator('.rail__item').nth(3).click()
+    await page.waitForTimeout(600)
+
+    // No progress bar animating means autoplay is not running — the reader's own choice of
+    // slide is left alone rather than being auto-advanced away from under them.
+    await expect(page.locator('.progress__fill')).not.toHaveClass(/is-playing/)
+  })
+
+  test('hovering the carousel pauses autoplay', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+
+    await expect(page.locator('.progress__fill')).toHaveClass(/is-playing/)
+
+    await page.locator('.carousel').hover()
+    await page.waitForTimeout(300)
+    await expect(page.locator('.progress__fill')).not.toHaveClass(/is-playing/)
+  })
+
+  test('reduced motion never autoplays, only moves on request', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/')
-    await page.locator('.explainer').scrollIntoViewIfNeeded()
+    await page.locator('.carousel').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(600)
 
-    await expect(page.locator('.explainer')).toHaveAttribute('data-phase', '4', { timeout: 2000 })
+    await expect(page.locator('.rail__item').first()).toHaveAttribute('aria-current', 'true')
+    await expect(page.locator('.progress__fill')).not.toHaveClass(/is-playing/)
   })
 
-  test('the text is present in the DOM regardless of animation state', async ({ page }) => {
-    // Real DOM text gated by opacity, not conditional rendering, so it reads and indexes like
-    // the rest of the page whether or not the animation has run yet. Not asserting on phase
-    // here: at typical viewport sizes the section is already within the intersection threshold
-    // on load, so "hasn't started" is not a reliable premise. The invariant that matters is
-    // that the text exists either way.
+  test('the code samples match what the rest of the homepage already shows', async ({ page }) => {
+    // Copied, not paraphrased: the curl example and the embed snippet exist elsewhere on this
+    // page, and a carousel that quietly drifts from them would teach two different requests
+    // for the same operation.
     await page.goto('/')
 
-    await expect(page.getByText('The mark is a page held inside code brackets')).toBeAttached()
+    const curlOnPage = await page.locator('pre code').allTextContents()
+    expect(curlOnPage.some((t) => t.includes('POST https://pdfwerk.com/v1/create/text'))).toBe(true)
+    expect(curlOnPage.filter((t) => t.includes("PdfWerk.mount('#pdf'"))).toHaveLength(2)
   })
 })

@@ -78,6 +78,12 @@
     <div>
       <div id="pdf-fill"></div>
     </div>
+    <div>
+      <div id="pdf-word"></div>
+    </div>
+    <div>
+      <div id="pdf-summarize"></div>
+    </div>
   </div>
 
   <h2>Callback output</h2>
@@ -118,6 +124,28 @@
     onResult: (blob, meta) => say(`fill → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB`),
     onError: (e) => say(`fill failed → ${e.message}`),
   })
+
+  PdfWerk.mount('#pdf-word', {
+    tool: 'word',
+    delivery: 'download',
+    onResult: (blob, meta) => say(`word → ${meta.fileName}, ${(blob.size / 1024).toFixed(1)} KB (saved)`),
+    onError: (e) => say(`word failed → ${e.message}`),
+  })
+
+  // The only tool that needs a provider configured on the server, so it is also the one that
+  // shows what a widget does when the server says no.
+  PdfWerk.mount('#pdf-summarize', {
+    tool: 'summarize',
+    onData: (summary) => say(`summarize → ${summary.wordCount} words via ${summary.providerUsed}`),
+    onError: (e) => say(`summarize failed → ${e.message}`),
+  })
+
+  // Fails loudly rather than silently rendering three of six: a demo that quietly drops a tool
+  // is worse than no demo, because it looks complete.
+  const mounted = ['create', 'merge', 'inspect', 'fill', 'word', 'summarize']
+  const missing = PdfWerk.tools.filter((t) => !mounted.includes(t))
+
+  if (missing.length) say(`NOT SHOWN ON THIS PAGE → ${missing.join(', ')}`)
 
   say(`PdfWerk embed v${PdfWerk.version} · tools: ${PdfWerk.tools.join(', ')}`)
 </script>

@@ -2193,3 +2193,22 @@ test.describe('adding text', () => {
     await expect(page.getByRole('button', { name: 'Apply & preview' })).toBeDisabled()
   })
 })
+
+test.describe('embed demo harness', () => {
+  test('every tool the widget supports is shown', async ({ page }) => {
+    await page.goto('/embed-demo.html')
+
+    // The page reports anything it failed to mount rather than quietly showing a subset, so a
+    // tool added to the widget without a demo is visible here instead of going unnoticed.
+    const log = page.locator('#log')
+    await expect(log).toContainText('PdfWerk embed v', { timeout: 20_000 })
+    await expect(log).not.toContainText('NOT SHOWN ON THIS PAGE')
+  })
+
+  test('it is reachable from the app rather than only by knowing the URL', async ({ page }) => {
+    await page.goto('/api')
+
+    const link = page.getByRole('link', { name: 'Open the live examples' })
+    await expect(link).toHaveAttribute('href', '/embed-demo.html')
+  })
+})

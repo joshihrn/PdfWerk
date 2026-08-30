@@ -134,7 +134,8 @@ const tiers = [
 &lt;/script&gt;</code></pre>
 
           <p class="note-under">
-            Rendered in a shadow root, so your stylesheet and the widget's cannot affect each other.
+            Rendered in a shadow root, so your stylesheet and the widget's cannot affect each other
+            — <a href="/embed-demo.html" target="_blank" rel="noopener">see it running</a>.
           </p>
         </PwCard>
       </div>

@@ -179,6 +179,26 @@ async function copy(text: string) {
             Full reference at <a href="/docs" target="_blank" rel="noopener">/docs</a>.
           </p>
         </PwCard>
+
+        <PwCard title="Embedding a tool in your own page">
+          <p class="t-13 subtle" style="margin-top: 0">
+            One script tag drops a working tool into any site. Each widget renders inside a shadow
+            root, so your styles cannot leak in and its styles cannot leak out.
+          </p>
+
+          <pre><code>&lt;div id="pdf-create"&gt;&lt;/div&gt;
+&lt;script src="/pdfwerk-embed.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  PdfWerk.mount('#pdf-create', { tool: 'create', apiKey: 'pw_…' })
+&lt;/script&gt;</code></pre>
+
+          <p class="t-13 subtle" style="margin-top: var(--s-3)">
+            <a href="/embed-demo.html" target="_blank" rel="noopener">Open the live examples</a> —
+            every tool running against this server, with the options table and a log of what the
+            callbacks receive. The page is deliberately styled with clashing fonts and colours to
+            show that none of it reaches inside the widgets.
+          </p>
+        </PwCard>
       </div>
 
       <div class="stack-4">

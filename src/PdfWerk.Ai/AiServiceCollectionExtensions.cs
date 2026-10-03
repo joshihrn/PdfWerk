@@ -22,7 +22,7 @@ public static class AiServiceCollectionExtensions
 
         // Every provider gets the same retry policy: free tiers shed load routinely, and a
         // single 503 should not become a failed request for the caller.
-        foreach (var name in new[] { nameof(GeminiProvider), nameof(GroqProvider), nameof(OllamaProvider) })
+        foreach (var name in new[] { nameof(GeminiProvider), nameof(GroqProvider), nameof(OllamaProvider), nameof(JambuProvider) })
         {
             services.AddHttpClient(name).AddHttpMessageHandler(provider =>
                 new TransientRetryHandler(
@@ -32,6 +32,7 @@ public static class AiServiceCollectionExtensions
         services.AddSingleton<IAiProvider, GeminiProvider>();
         services.AddSingleton<IAiProvider, GroqProvider>();
         services.AddSingleton<IAiProvider, OllamaProvider>();
+        services.AddSingleton<IAiProvider, JambuProvider>();
 
         services.AddSingleton<IAiProviderRegistry, AiProviderRegistry>();
         services.AddSingleton<IPdfSummarizer, PdfSummarizer>();

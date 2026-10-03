@@ -70,4 +70,12 @@ public sealed class AiOptions
     };
 
     public OllamaOptions Ollama { get; set; } = new();
+
+    /// <summary>The operator's own self-hosted model, via its OpenAI-compatible endpoint.</summary>
+    public ProviderOptions Jambu { get; set; } = new()
+    {
+        BaseUrl = "https://api.jambuvan.app/v1",
+        Model = "qwen2.5:32b",
+        ContextTokens = 32_000,
+    };
 }
